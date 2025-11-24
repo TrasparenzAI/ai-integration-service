@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chat AI – Streaming SSE</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #22c55e;
+      --accent-2: #60a5fa;
+      --danger: #ef4444;
+      --border: #334155;
+      --token-bg: #0b1220;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0; background: var(--bg); color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      line-height: 1.4;
+    }
+    header { padding: 16px 20px; border-bottom: 1px solid var(--border); background: #0b1020; }
+    header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    main { max-width: 920px; margin: 0 auto; padding: 20px; display: grid; gap: 16px; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .form { padding: 14px; display: grid; gap: 10px; }
+    .row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+    input[type="text"] {
+      width: 100%; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border);
+      background: #0b1220; color: var(--text);
+    }
+    .buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      padding: 10px 14px; border: 1px solid var(--border); background: #0c1424; color: var(--text);
+      border-radius: 8px; cursor: pointer; transition: background 0.15s;
+    }
+    button.primary { border-color: #14532d; background: #0a1f16; color: #bff7d0; }
+    button.primary:hover { background: #0d2b1d; }
+    button.stop { border-color: #7f1d1d; background: #1a0e0e; color: #fecaca; }
+    button.stop:hover { background: #220f10; }
+    button.secondary:hover { background: #111b2d; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .output { padding: 14px; min-height: 200px; max-height: 60vh; overflow: auto; background: #0a0f1f; border-top: 1px solid var(--border);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .status { padding: 10px 14px; border-top: 1px solid var(--border); color: var(--muted); display: flex; gap: 8px; align-items: center; }
+    .pill { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; }
+    .pill.ok { color: #bbf7d0; border-color: #14532d; }
+    .pill.err { color: #fecaca; border-color: #7f1d1d; }
+    .token { white-space: pre-wrap; }
+    .muted { color: var(--muted); }
+    footer { text-align: center; color: var(--muted); padding: 10px; font-size: 12px; }
+  </style>
+  <script>
+    let es = null;
+
+    function byId(id){ return document.getElementById(id); }
+
+    function setStatus(msg, type){
+      const el = byId('status');
+      el.textContent = msg;
+      el.className = 'pill ' + (type || '');
+    }
+
+    function setRunning(running){
+      byId('sendBtn').disabled = running;
+      byId('stopBtn').disabled = !running;
+      byId('input').disabled = running;
+    }
+
+    function clearOutput(){ byId('output').textContent = ''; }
+
+    function appendToken(t){
+      const out = byId('output');
+      out.textContent += t;
+      out.scrollTop = out.scrollHeight;
+    }
+
+    function startStream(ev){
+      if (ev) ev.preventDefault();
+      const text = byId('input').value.trim();
+      clearOutput();
+      if (!text){
+        setStatus("Inserisci un messaggio", 'err');
+        return false;
+      }
+
+      // Chiudi eventuale stream precedente
+      if (es){ try { es.close(); } catch(_){} es = null; }
+
+      const url = `/api/chat/stream?message=${encodeURIComponent(text)}`;
+      es = new EventSource(url);
+      setRunning(true);
+      setStatus('Connessione in corso…', '');
+
+      es.addEventListener('open', () => {
+        setStatus('Streaming avviato', 'ok');
+      });
+
+      es.addEventListener('token', (e) => {
+        appendToken(e.data || '');
+      });
+
+      es.addEventListener('end', () => {
+        setRunning(false);
+        setStatus('Completato', 'ok');
+        if (es){ es.close(); es = null; }
+      });
+
+      es.addEventListener('error', (e) => {
+        setRunning(false);
+        setStatus('Errore: ' + (e.data || 'connessione SSE'), 'err');
+        if (es){ es.close(); es = null; }
+      });
+
+      es.onerror = () => {
+        // L'evento 'error' generico del canale SSE
+        setRunning(false);
+        setStatus('Errore connessione SSE', 'err');
+        if (es){ es.close(); es = null; }
+      }
+
+      return false;
+    }
+
+    function stopStream(){
+      if (es){ es.close(); es = null; }
+      setRunning(false);
+      setStatus('Interrotto', '');
+    }
+
+    function copyOutput(){
+      const txt = byId('output').textContent;
+      navigator.clipboard.writeText(txt).then(()=>{
+        setStatus('Copiato negli appunti', 'ok');
+      }).catch(()=>{
+        setStatus('Copia non riuscita', 'err');
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      setRunning(false);
+      byId('form').addEventListener('submit', startStream);
+      byId('sendBtn').addEventListener('click', startStream);
+      byId('stopBtn').addEventListener('click', stopStream);
+      byId('clearBtn').addEventListener('click', () => { clearOutput(); setStatus('Pulito', ''); });
+      byId('copyBtn').addEventListener('click', copyOutput);
+    });
+  </script>
+  <!-- Evita caching aggressivo sui browser durante lo sviluppo -->
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+</head>
+<body>
+  <header>
+    <h1>Interfaccia Chat AI (SSE)</h1>
+  </header>
+
+  <main>
+    <section class="panel">
+      <form id="form" class="form">
+        <div class="row">
+          <input id="input" type="text" placeholder="Scrivi qui la tua richiesta…" autofocus />
+          <div class="buttons">
+            <button id="sendBtn" class="primary" type="submit">Invia</button>
+            <button id="stopBtn" class="stop" type="button" disabled>Stop</button>
+            <button id="clearBtn" class="secondary" type="button">Pulisci</button>
+            <button id="copyBtn" class="secondary" type="button">Copia</button>
+          </div>
+        </div>
+      </form>
+      <div id="output" class="output" aria-live="polite"></div>
+      <div class="status">
+        <span id="status" class="pill">Pronto</span>
+        <span class="muted">Ricezione in tempo reale dagli eventi SSE: open → token* → end</span>
+      </div>
+    </section>
+
+    <section class="panel" style="padding: 14px">
+      <details>
+        <summary>Dettagli tecnici</summary>
+        <ul>
+          <li>Endpoint: GET <code>/api/chat/stream?message=...</code></li>
+          <li>Eventi SSE gestiti: <code>open</code>, <code>token</code>, <code>end</code>, <code>error</code></li>
+          <li>Questa pagina è servita come risorsa statica da Spring Boot</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+
+  <footer>
+    Demo SSE • Spring Boot + Spring AI (Ollama)
+  </footer>
+</body>
+</html>
