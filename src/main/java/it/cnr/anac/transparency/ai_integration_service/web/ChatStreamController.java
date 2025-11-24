@@ -153,6 +153,36 @@ public class ChatStreamController {
     }
 
     /**
+     * Variante per consumare direttamente un body text/plain con il prompt grezzo.
+     * Utile per client che inviano il corpo come testo invece che JSON.
+     */
+    @PostMapping(path = {"", "/"}, consumes = MediaType.TEXT_PLAIN_VALUE, produces = MediaType.TEXT_PLAIN_VALUE)
+    public String chatText(@RequestBody String prompt,
+                           @RequestParam(name = "message", required = false) String messageParam) {
+        if (log.isInfoEnabled()) {
+            log.info("[POST /api/chat text/plain] message(param)='{}', bodyLength={}",
+                    messageParam, (prompt != null ? prompt.length() : null));
+        }
+
+        String effective = null;
+        if (StringUtils.hasText(messageParam)) {
+            effective = messageParam;
+        } else if (StringUtils.hasText(prompt)) {
+            effective = prompt;
+        }
+
+        if (!StringUtils.hasText(effective)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Parametro 'message' obbligatorio");
+        }
+
+        return this.chatClient
+                .prompt()
+                .user(effective)
+                .call()
+                .content();
+    }
+
+    /**
      * Endpoint diagnostico per verificare rapidamente che il mapping sia attivo.
      */
     @GetMapping(path = {"", "/"}, produces = MediaType.TEXT_PLAIN_VALUE)
