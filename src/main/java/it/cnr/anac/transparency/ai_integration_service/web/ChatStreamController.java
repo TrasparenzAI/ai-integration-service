@@ -2,15 +2,12 @@ package it.cnr.anac.transparency.ai_integration_service.web;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
@@ -23,16 +20,19 @@ import java.util.Objects;
  * Controller REST che espone un endpoint SSE per lo streaming dei token
  * generati dal modello Ollama tramite Spring AI.
  */
+@CrossOrigin
 @RestController
 @RequestMapping("/api/chat")
 public class ChatStreamController {
 
     private final ChatClient chatClient;
+    private final ObjectMapper objectMapper;
     private static final Logger log = LoggerFactory.getLogger(ChatStreamController.class);
 
-    public ChatStreamController(ChatClient.Builder chatClientBuilder) {
+    public ChatStreamController(ChatClient.Builder chatClientBuilder, ObjectMapper objectMapper) {
         // costruiamo un client predefinito (config in application.properties)
         this.chatClient = chatClientBuilder.build();
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -67,10 +67,11 @@ public class ChatStreamController {
             .subscribe(
                 chunk -> {
                     try {
-                        // Inoltra ogni token/chunk come evento denominato "token"
+                        // Avvolgi il chunk in JSON per preservare spazi iniziali/finali attraverso SSE
+                        String json = toJson(new Chunk(chunk));
                         emitter.send(SseEmitter.event()
-                            .name("token")
-                            .data(chunk, MediaType.TEXT_PLAIN)
+                                .name("token")
+                                .data(json, MediaType.APPLICATION_JSON)
                         );
                     } catch (IOException e) {
                         // Se il client ha chiuso la connessione o c'è I/O error, interrompi lo stream
@@ -197,4 +198,19 @@ public class ChatStreamController {
      * DTO minimale per il body JSON della richiesta POST.
      */
     public record MessageRequest(String message) {}
+
+    // Wrapper JSON per preservare gli spazi nei chunk: {"c":"..."}
+    private record Chunk(String c) {}
+
+    private String toJson(Object obj) {
+        try {
+            return objectMapper.writeValueAsString(obj);
+        } catch (JsonProcessingException e) {
+            // Fallback minimale
+            if (obj instanceof Chunk) {
+                return "{\"c\":\"\"}";
+            }
+            return "{}";
+        }
+    }
 }

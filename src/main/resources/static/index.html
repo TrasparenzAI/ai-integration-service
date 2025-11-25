@@ -44,7 +44,12 @@
     button.secondary:hover { background: #111b2d; }
     button:disabled { opacity: .6; cursor: not-allowed; }
     .output { padding: 14px; min-height: 200px; max-height: 60vh; overflow: auto; background: #0a0f1f; border-top: 1px solid var(--border);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      /* Preserva TUTTI gli spazi (anche consecutivi e finali) e gli a capo; consente il wrapping per evitare lo scroll orizzontale */
+      white-space: break-spaces;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
     .status { padding: 10px 14px; border-top: 1px solid var(--border); color: var(--muted); display: flex; gap: 8px; align-items: center; }
     .pill { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; }
     .pill.ok { color: #bbf7d0; border-color: #14532d; }
@@ -100,7 +105,13 @@
       });
 
       es.addEventListener('token', (e) => {
-        appendToken(e.data || '');
+        let t = e.data || '';
+        // I chunk possono arrivare come JSON {"c":"..."} per preservare spazi iniziali/finali
+        try {
+          const obj = JSON.parse(t);
+          if (obj && typeof obj.c === 'string') t = obj.c;
+        } catch(_){ /* non JSON: usa il testo grezzo */ }
+        appendToken(t);
       });
 
       es.addEventListener('end', () => {
@@ -156,7 +167,7 @@
 </head>
 <body>
   <header>
-    <h1>Interfaccia Chat AI (SSE)</h1>
+    <h1>Chat con TransparenzAI (SSE)</h1>
   </header>
 
   <main>
