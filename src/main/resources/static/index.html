@@ -109,7 +109,7 @@
         // I chunk possono arrivare come JSON {"c":"..."} per preservare spazi iniziali/finali
         try {
           const obj = JSON.parse(t);
-          if (obj && typeof obj.c === 'string') t = obj.c;
+          if (obj && typeof obj.text === 'string') t = obj.text;
         } catch(_){ /* non JSON: usa il testo grezzo */ }
         appendToken(t);
       });

@@ -14,6 +14,7 @@ import org.springframework.http.HttpStatus;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Objects;
 
 /**
@@ -42,6 +43,11 @@ public class ChatStreamController {
      *  - name: "end" (fine stream)
      *  - name: "error" (errore durante l'elaborazione)
      */
+    @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter postStream(@RequestBody StreamRequest body) {
+        return stream(Arrays.stream(body.messages).findAny().map(RoleMessageRequest::text).orElse(""));
+    }
+
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@RequestParam(name = "message") String message) {
         if (!StringUtils.hasText(message)) {
@@ -96,7 +102,7 @@ public class ChatStreamController {
                 },
                 () -> {
                     try {
-                        emitter.send(SseEmitter.event().name("end").data(""));
+                        emitter.send(SseEmitter.event().name("end"));
                     } catch (IOException ignored) {
                     } finally {
                         emitter.complete();
@@ -198,9 +204,15 @@ public class ChatStreamController {
      * DTO minimale per il body JSON della richiesta POST.
      */
     public record MessageRequest(String message) {}
+    /**
+     * DTO minimale per il body JSON della richiesta POST con STREAM.
+     */
+    public record StreamRequest(RoleMessageRequest[] messages) {}
+
+    public record RoleMessageRequest(String role, String text) {}
 
     // Wrapper JSON per preservare gli spazi nei chunk: {"c":"..."}
-    private record Chunk(String c) {}
+    private record Chunk(String text) {}
 
     private String toJson(Object obj) {
         try {
@@ -208,7 +220,7 @@ public class ChatStreamController {
         } catch (JsonProcessingException e) {
             // Fallback minimale
             if (obj instanceof Chunk) {
-                return "{\"c\":\"\"}";
+                return "{\"text\":\"\"}";
             }
             return "{}";
         }
