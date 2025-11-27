@@ -11,6 +11,62 @@ Trasparenza dei siti web delle Pubbliche amministrazioni italiane.
 AI Integration Service è il componente che si occupa interagire con Ollama per l'utilizzo
 del AI nella generazione di risposte e contenuti per gli utenti.
 
+## ✅ Configurare un MCP Server con Ollama (Spring AI)
+
+Questo progetto include già lo starter Spring AI per agire come client MCP:
+
+- `spring-ai-starter-mcp-client`
+- `spring-ai-starter-model-ollama`
+
+Per indicare all'applicazione di usare uno o più MCP Server (HTTP/SSE o STDIO) basta
+configurare le proprietà in `src/main/resources/application.properties`.
+
+1) Abilita MCP:
+
+```
+spring.ai.mcp.client=true
+```
+
+2) Aggiungi uno o più server MCP. Esempi:
+
+- Via HTTP/SSE (server esterno):
+
+```
+# id: local_mcp
+# Simple configuration using default /sse endpoint
+spring.ai.mcp.client.streamable-http.connections.local_mcp.url: http://localhost:8081
+
+```
+
+Suggerimento: puoi definire quanti server vuoi con ID diversi (`tools`, `public_site_mcp_server`, `results_mcp_server`, …).
+
+3) Configura Ollama in locale (già presente):
+
+```
+spring.ai.ollama.base-url=http://localhost:11434
+spring.ai.ollama.chat.options.model=llama3
+```
+
+Note:
+- Gli strumenti esposti dai server MCP vengono registrati automaticamente e resi disponibili
+  al ChatClient di Spring AI. Se il modello supporta il tool/function calling, Spring AI li utilizzerà
+  quando pertinente durante la conversazione.
+- Alcuni modelli Ollama hanno migliore supporto al tool calling (es. famiglia Llama 3.1). Verifica la
+  documentazione del modello per risultati ottimali.
+
+### Verifica rapida
+
+1. Avvia i tuoi MCP server (HTTP/STDIO) come da configurazione.
+2. Avvia questa app Spring Boot.
+3. Chiama l'endpoint SSE per lo streaming token:
+
+```
+GET http://localhost:8080/api/chat/stream?message=Quali strumenti MCP sono disponibili?
+```
+
+Controlla i log: vedrai la registrazione delle connessioni MCP e, durante l'uso,
+il modello potrà invocare gli strumenti MCP se rilevanti.
+
 ## 👏 Come Contribuire
 
 E' possibile contribuire a questo progetto utilizzando le modalità standard della comunità opensource
