@@ -11,6 +11,39 @@ Trasparenza dei siti web delle Pubbliche amministrazioni italiane.
 AI Integration Service è il componente che si occupa interagire con Ollama per l'utilizzo
 del AI nella generazione di risposte e contenuti per gli utenti.
 
+## 🔐 Autenticazione: OAuth2 Resource Server con JWT
+
+Questo servizio può funzionare come Resource Server OAuth2 validando token Bearer JWT secondo la configurazione nativa Spring Boot.
+
+Per default l'autenticazione è ABILITATA. Per disabilitarla e rendere accessibili senza autenticazione tutte
+le API  sotto `/api/**` puoi disabilitare resource Server nel file `application.properties` con `security.oauth2.resourceserver.enabled=true`.
+
+Per configurare l'autenticazione:
+
+1Configura la validazione JWT usando uno dei due metodi (scegline uno):
+
+- Issuer OIDC (consigliato, discovery automatico):
+
+```
+spring.security.oauth2.resourceserver.jwt.issuer-uri=https://dica33.ba.cnr.it/keycloak/realms/trasparenzai
+```
+
+- Oppure JWK Set URI diretto:
+
+```
+spring.security.oauth2.resourceserver.jwt.jwk-set-uri=https://https://dica33.ba.cnr.it/keycloak/realms/trasparenzai/protocol/openid-connect/certs
+```
+
+2Effettua le chiamate alle API includendo l'header Authorization:
+
+```
+Authorization: Bearer <jwt>
+```
+
+Note:
+- Sono sempre consentiti senza autenticazione: risorse statiche, `GET /actuator/health`, `GET /actuator/info` e le richieste `OPTIONS` (per CORS).
+- CSRF è disabilitato per le API stateless. Il CORS è abilitato in modo permissivo; adegua in produzione (origini, metodi, header) secondo le tue policy.
+
 ## ✅ Configurare un MCP Server con Ollama (Spring AI)
 
 Questo progetto include già lo starter Spring AI per agire come client MCP:
@@ -24,7 +57,7 @@ configurare le proprietà in `src/main/resources/application.properties`.
 1) Abilita MCP:
 
 ```
-spring.ai.mcp.client=true
+spring.ai.mcp.client.enabled=true
 ```
 
 2) Aggiungi uno o più server MCP. Esempi:
@@ -37,6 +70,7 @@ spring.ai.mcp.client=true
 spring.ai.mcp.client.streamable-http.connections.local_mcp.url: http://localhost:8081
 
 ```
+
 
 Suggerimento: puoi definire quanti server vuoi con ID diversi (`tools`, `public_site_mcp_server`, `results_mcp_server`, …).
 
