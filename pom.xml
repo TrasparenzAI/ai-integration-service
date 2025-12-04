@@ -10,26 +10,14 @@
 	</parent>
 	<groupId>it.cnr.anac.transparency</groupId>
 	<artifactId>ai-integration-service</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>0.0.1</version>
 	<name>ai-integration-service</name>
 	<description>Servizio per l'interfacciamento dei componenti TrasparenzAI con Ollama</description>
-	<url/>
-	<licenses>
-		<license/>
-	</licenses>
-	<developers>
-		<developer/>
-	</developers>
-	<scm>
-		<connection/>
-		<developerConnection/>
-		<tag/>
-		<url/>
-	</scm>
 	<properties>
 		<java.version>25</java.version>
 		<spring-ai.version>1.1.0</spring-ai.version>
-	</properties>
+        <jib.maven-plugin.version>3.5.1</jib.maven-plugin.version>
+    </properties>
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -123,6 +111,18 @@
 					</excludes>
 				</configuration>
 			</plugin>
+            <plugin>
+                <groupId>com.google.cloud.tools</groupId>
+                <artifactId>jib-maven-plugin</artifactId>
+                <version>${jib.maven-plugin.version}</version>
+                <configuration>
+                    <from><image>eclipse-temurin:25-jre-ubi10-minimal@sha256:0df5caab80e3a3141685e3254301a951f1ae845ab788bb489bc063e6b085c301</image></from>
+                    <container>
+                        <creationTime>USE_CURRENT_TIMESTAMP</creationTime>
+                        <mainClass>it.cnr.anac.transparency.ai_integration_service.AiIntegrationServiceApplication</mainClass>
+                    </container>
+                </configuration>
+            </plugin>
 		</plugins>
 	</build>
 
