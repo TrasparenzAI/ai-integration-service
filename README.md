@@ -20,7 +20,7 @@ le API  sotto `/api/**` puoi disabilitare resource Server nel file `application.
 
 Per configurare l'autenticazione:
 
-1Configura la validazione JWT usando uno dei due metodi (scegline uno):
+1) Configura la validazione JWT usando uno dei due metodi (scegline uno):
 
 - Issuer OIDC (consigliato, discovery automatico):
 
@@ -34,7 +34,7 @@ spring.security.oauth2.resourceserver.jwt.issuer-uri=https://dica33.ba.cnr.it/ke
 spring.security.oauth2.resourceserver.jwt.jwk-set-uri=https://https://dica33.ba.cnr.it/keycloak/realms/trasparenzai/protocol/openid-connect/certs
 ```
 
-2Effettua le chiamate alle API includendo l'header Authorization:
+2) Effettua le chiamate alle API includendo l'header Authorization:
 
 ```
 Authorization: Bearer <jwt>
