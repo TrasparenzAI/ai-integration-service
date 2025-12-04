@@ -10,6 +10,7 @@ services:
     ports:
       - 8080:8080
     environment:
+    #- server.servlet.context-path=/ai-integration-service
     # Configurazione Autenticazione OAuth2 come Resource Server
     - spring.security.oauth2.resourceserver.jwt.issuer-uri=https://dica33.ba.cnr.it/keycloak/realms/trasparenzai
     # Configurazione inference server

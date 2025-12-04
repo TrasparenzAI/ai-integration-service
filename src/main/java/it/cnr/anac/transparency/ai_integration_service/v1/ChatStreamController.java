@@ -14,10 +14,11 @@
  *     You should have received a copy of the GNU Affero General Public License
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package it.cnr.anac.transparency.ai_integration_service.web;
+package it.cnr.anac.transparency.ai_integration_service.v1;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.extern.slf4j.Slf4j;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.chat.client.ChatClient;
@@ -36,14 +37,18 @@ import java.util.Arrays;
  * Controller REST che espone un endpoint SSE per lo streaming dei token
  * generati dal modello Ollama tramite Spring AI.
  */
+@SecurityRequirement(name = "bearer_authentication")
+@Tag(
+        name = "AI Integration Service Controller",
+        description = "Endpoint REST per l'interazione tramite messaggi di testo con LLM.")
+@Slf4j
 @CrossOrigin
 @RestController
-@RequestMapping("/api/chat")
+@RequestMapping(ApiRoutes.BASE_PATH + "/chat")
 public class ChatStreamController {
 
     private final ChatClient chatClient;
     private final ObjectMapper objectMapper;
-    private static final Logger log = LoggerFactory.getLogger(ChatStreamController.class);
 
     public ChatStreamController(ChatClient.Builder chatClientBuilder, ObjectMapper objectMapper) {
         // costruiamo un client predefinito (config in application.properties)
