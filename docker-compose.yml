@@ -1,0 +1,39 @@
+#########################################################################
+# AI Integration Service                                                #
+# Configurazione per l'avvio di Ai Integration Service                  #
+#########################################################################
+
+services:
+  ai-integration-service:
+    image: ghcr.io/trasparenzai/ai-integration-service:latest
+    container_name: ai-integration-service
+    ports:
+      - 8080:8080
+    environment:
+    # Configurazione Autenticazione OAuth2 come Resource Server
+    - spring.security.oauth2.resourceserver.jwt.issuer-uri=https://dica33.ba.cnr.it/keycloak/realms/trasparenzai
+    # Configurazione inference server
+    #- spring.ai.ollama.base-url=http://150.145.70.201:11434
+    #- spring.ai.ollama.chat.options.model=qwen2.5:32b
+    # Configurazione server MCP
+    - spring.ai.mcp.client.enabled=false
+    - spring.ai.mcp.client.streamable-http.connections.local_mcp.url=https://dica33.ba.cnr.it/mcp-server
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    restart: unless-stopped
+    #labels:
+    #  - "traefik.enable=true"
+    #  - "traefik.http.routers.ai-integration-service.entrypoints=websecure"
+    #  - "traefik.http.routers.ai-integration-service.rule=Host(`dica33.ba.cnr.it`) && PathPrefix(`/ai-integration-service`)"
+    #  - "traefik.http.routers.ai-integration-service.tls.certresolver=myresolver"
+    #  - "traefik.http.routers.ai-integration-service.middlewares=cors-ai-integration-service"
+    #  - "traefik.http.middlewares.cors-ai-integration-service.headers.accessControlAllowOriginListRegex=(.*?)"
+    #  - "traefik.http.middlewares.cors-ai-integration-service.headers.accesscontrolallowheaders=*"
+    #networks:
+    #  - traefik_default
+
+#networks:
+#  traefik_default:
+#    external: true
+
