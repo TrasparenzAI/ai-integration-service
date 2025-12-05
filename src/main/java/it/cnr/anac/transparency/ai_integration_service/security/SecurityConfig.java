@@ -16,63 +16,52 @@
  */
 package it.cnr.anac.transparency.ai_integration_service.security;
 
+import it.cnr.anac.transparency.ai_integration_service.config.McpSyncClientExchangeFilterFunction;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.annotation.web.configurers.CsrfConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.reactive.function.client.WebClient;
 
 @Slf4j
-@EnableWebSecurity
-@EnableMethodSecurity
 @Configuration
-@EnableConfigurationProperties(Oauth2Properties.class)
 public class SecurityConfig {
-    private final Oauth2Properties oauth2Properties;
 
-    public SecurityConfig(Oauth2Properties oauth2Properties) {
-        this.oauth2Properties = oauth2Properties;
+    /**
+     * Overload Boot's default {@link WebClient.Builder}, so that we can inject an
+     * oauth2-enabled {@link org.springframework.web.reactive.function.client.ExchangeFilterFunction}
+     * that adds OAuth2 tokens to requests sent to the MCP server.
+     */
+    @Bean
+    WebClient.Builder webClientBuilder(McpSyncClientExchangeFilterFunction filterFunction) {
+        return WebClient.builder().apply(filterFunction.configuration());
     }
 
     @Bean
-    public SecurityFilterChain configure(HttpSecurity http) throws Exception {
-        log.info("Enabling security config");
-        if (oauth2Properties.isEnabled()) {
-            http.authorizeHttpRequests(expressionInterceptUrlRegistry -> {
-                expressionInterceptUrlRegistry
-                        .requestMatchers(HttpMethod.OPTIONS).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/actuator/*").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api-docs/**", "/swagger-ui/**").permitAll();
-                oauth2Properties
-                        .getRoles()
-                        .forEach((key, value) ->
-                                expressionInterceptUrlRegistry
-                                        .requestMatchers(HttpMethod.valueOf(key)).hasAnyRole(value)
-                        );
-                oauth2Properties
-                        .getUrls()
-                        .forEach((key, value) ->
-                                expressionInterceptUrlRegistry
-                                        .requestMatchers(key).hasAnyRole(value)
-                        );
-                expressionInterceptUrlRegistry
-                        .anyRequest()
-                        .permitAll();
-            });
-        }
-        return http
-                .csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(config -> config.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .oauth2ResourceServer(httpSecurityOAuth2ResourceServerConfigurer -> httpSecurityOAuth2ResourceServerConfigurer.jwt(jwtConfigurer -> jwtConfigurer.jwtAuthenticationConverter(
-                        new RolesClaimConverter(new JwtGrantedAuthoritiesConverter())
-                )))
-                .build();
+    public SecurityFilterChain securityFilterChainJwt(HttpSecurity http) throws Exception {
+        http
+                .oauth2Client(Customizer.withDefaults())
+                .cors(Customizer.withDefaults())
+                .csrf(CsrfConfigurer::disable)
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        // consenti statici e actuator health/info
+                        .requestMatchers("/", "/index.html", "/static/**", "/css/**", "/js/**").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // proteggi API
+                        .requestMatchers("/v1/**").authenticated()
+                        // tutto il resto consentito (puoi restringere se necessario)
+                        .anyRequest().permitAll()
+                )
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+
+        return http.build();
     }
+
 }

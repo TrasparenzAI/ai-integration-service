@@ -71,10 +71,28 @@ spring.ai.mcp.client.streamable-http.connections.local_mcp.url: http://localhost
 
 ```
 
+3) Configura l'autenticazione dell'applicazione (come MCP Client) verso gli MCP Server
+
+Le interazione tra AI Integration Service e gli MCP Server avvengono con autenticazione OAuth2.
+Configurare il `client-id` e `client-secret` sia per la parte di MCP Tools calling che di
+interazione MCP Client/Server per listing toos, initializing, etc.
+
+```
+# Security: for getting tokens used when calling MCP tools
+spring.security.oauth2.client.registration.authserver.client-id=MCP_CLIENT_ID_DA_IMPOSTARE
+spring.security.oauth2.client.registration.authserver.client-secret=MCP_CLIENT_SECRET_DA_IMPOSTARE
+spring.security.oauth2.client.registration.authserver.authorization-grant-type=authorization_code
+spring.security.oauth2.client.registration.authserver.provider=authserver
+
+# Security: for getting tokens used when listing tools, initializing, etc.
+spring.security.oauth2.client.registration.authserver-client-credentials.client-id=MCP_CLIENT_ID_DA_IMPOSTARE
+spring.security.oauth2.client.registration.authserver-client-credentials.client-secret=MCP_CLIENT_SECRET_DA_IMPOSTARE
+
+```
 
 Suggerimento: puoi definire quanti server vuoi con ID diversi (`tools`, `public_site_mcp_server`, `results_mcp_server`, …).
 
-3) Configura Ollama in locale (già presente):
+4) Configura Ollama in locale (già presente):
 
 ```
 spring.ai.ollama.base-url=http://localhost:11434
