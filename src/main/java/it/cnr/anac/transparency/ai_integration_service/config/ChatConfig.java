@@ -14,13 +14,21 @@
  *     You should have received a copy of the GNU Affero General Public License
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package it.cnr.anac.transparency.ai_integration_service.v1;
+package it.cnr.anac.transparency.ai_integration_service.config;
 
-/**
- * Costanti utili per le definizioni delle rotte delle API.
- */
-public class ApiRoutes {
+import io.modelcontextprotocol.client.McpSyncClient;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
-  public static final String BASE_PATH = "/v1";
+import java.util.List;
 
+@Configuration
+public class ChatConfig {
+
+    @Bean
+    ChatClient chatClient(ChatClient.Builder chatClientBuilder, List<McpSyncClient> mcpClients) {
+        return chatClientBuilder.defaultToolCallbacks(new SyncMcpToolCallbackProvider(mcpClients)).build();
+    }
 }
