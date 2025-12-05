@@ -92,10 +92,19 @@ Note:
 
 1. Avvia i tuoi MCP server (HTTP/STDIO) come da configurazione.
 2. Avvia questa app Spring Boot.
-3. Chiama l'endpoint SSE per lo streaming token:
+3. Ottieni un token JWT Valido
 
 ```
-GET http://localhost:8080/api/chat/stream?message=Quali strumenti MCP sono disponibili?
+export CLIENT_ID=il_tuo_client_id
+export CLIENT_SECRET=il_tuo_client_secret
+
+ACCESS_TOKEN=$(curl 'https://dica33.ba.cnr.it/keycloak/realms/trasparenzai/protocol/openid-connect/token' -H 'accept: application/json, text/plain, */*' --data "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET"| jq -r '.access_token')
+```
+
+4. Chiama l'endpoint SSE per lo streaming token:
+
+```
+GET -H "Authorization: Bearer $ACCESS_TOKEN" http://localhost:8080/v1/chat/?message=Quali strumenti MCP sono disponibili?
 ```
 
 Controlla i log: vedrai la registrazione delle connessioni MCP e, durante l'uso,
