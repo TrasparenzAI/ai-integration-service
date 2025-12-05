@@ -18,6 +18,7 @@ package it.cnr.anac.transparency.ai_integration_service.v1;
 
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,6 +43,7 @@ import java.util.Arrays;
         name = "AI Integration Service Controller",
         description = "Endpoint REST per l'interazione tramite messaggi di testo con LLM.")
 @Slf4j
+@RequiredArgsConstructor
 @CrossOrigin
 @RestController
 @RequestMapping(ApiRoutes.BASE_PATH + "/chat")
@@ -50,11 +52,11 @@ public class ChatStreamController {
     private final ChatClient chatClient;
     private final ObjectMapper objectMapper;
 
-    public ChatStreamController(ChatClient.Builder chatClientBuilder, ObjectMapper objectMapper) {
-        // costruiamo un client predefinito (config in application.properties)
-        this.chatClient = chatClientBuilder.build();
-        this.objectMapper = objectMapper;
-    }
+//    public ChatStreamController(ChatClient.Builder chatClientBuilder, ObjectMapper objectMapper) {
+//        // costruiamo un client predefinito (config in application.properties)
+//        this.chatClient = chatClientBuilder.build();
+//        this.objectMapper = objectMapper;
+//    }
 
     /**
      * Avvia lo streaming SSE dei token della risposta del modello.
