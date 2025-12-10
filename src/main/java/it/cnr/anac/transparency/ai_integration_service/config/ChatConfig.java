@@ -19,6 +19,7 @@ package it.cnr.anac.transparency.ai_integration_service.config;
 import io.modelcontextprotocol.client.McpSyncClient;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -27,8 +28,14 @@ import java.util.List;
 @Configuration
 public class ChatConfig {
 
+    @Value("${ai.systemPrompt}")
+    String SYSTEM_PROMPT;
+
     @Bean
     ChatClient chatClient(ChatClient.Builder chatClientBuilder, List<McpSyncClient> mcpClients) {
-        return chatClientBuilder.defaultToolCallbacks(new SyncMcpToolCallbackProvider(mcpClients)).build();
+         return chatClientBuilder.defaultToolCallbacks(
+                 SyncMcpToolCallbackProvider.builder().mcpClients(mcpClients).build())
+                 .defaultSystem(SYSTEM_PROMPT)
+                 .build();
     }
 }
