@@ -23,16 +23,23 @@ import lombok.extern.slf4j.Slf4j;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AbstractMessage;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
+import reactor.core.publisher.Flux;
 
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Controller REST che espone un endpoint SSE per lo streaming dei token
@@ -52,85 +59,52 @@ public class ChatStreamController {
     private final ChatClient chatClient;
     private final ObjectMapper objectMapper;
 
-//    public ChatStreamController(ChatClient.Builder chatClientBuilder, ObjectMapper objectMapper) {
-//        // costruiamo un client predefinito (config in application.properties)
-//        this.chatClient = chatClientBuilder.build();
-//        this.objectMapper = objectMapper;
-//    }
 
-    /**
-     * Avvia lo streaming SSE dei token della risposta del modello.
-     * Eventi inviati:
-     *  - name: "token" (chunk di testo)
-     *  - name: "end" (fine stream)
-     *  - name: "error" (errore durante l'elaborazione)
-     */
-    @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter postStream(@RequestBody StreamRequest body) {
-        return stream(Arrays.stream(body.messages).findAny().map(RoleMessageRequest::text).orElse(""));
-    }
-
-    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@RequestParam(name = "message") String message) {
-        if (!StringUtils.hasText(message)) {
-            // errore immediato con SSE minimale (chiudiamo subito)
-            SseEmitter bad = new SseEmitter(0L);
-            try {
-                bad.send(SseEmitter.event().name("error").data("Parametro 'message' obbligatorio"));
-            } catch (IOException ignored) {
-            }
-            bad.complete();
-            return bad;
-        }
-
+    private SseEmitter emitter(Flux<String> stringFlux) {
         // Timeout: 2 minuti per conversazione (0L = infinito, ma meglio evitare connessioni orfane)
         SseEmitter emitter = new SseEmitter(Duration.ofMinutes(2).toMillis());
 
         // Sottoscrizione allo stream dei contenuti (token) del modello
-        var subscription = this.chatClient
-            .prompt()
-            .user(message)
-            .stream()
-            .content()
-            .subscribe(
-                chunk -> {
-                    try {
-                        // Avvolgi il chunk in JSON per preservare spazi iniziali/finali attraverso SSE
-                        String json = toJson(new Chunk(chunk));
-                        emitter.send(SseEmitter.event()
-                                .name("token")
-                                .data(json, MediaType.APPLICATION_JSON)
-                        );
-                    } catch (IOException e) {
-                        // Se il client ha chiuso la connessione o c'è I/O error, interrompi lo stream
-                        try {
-                            emitter.send(SseEmitter.event().name("error").data("Connessione client interrotta"));
-                        } catch (IOException ignored) {}
-                        emitter.complete();
-                    }
-                },
-                err -> {
-                    try {
-                        String msg = err.getMessage();
-                        if (msg == null) msg = err.getClass().getSimpleName();
-                        emitter.send(SseEmitter.event()
-                                .name("error")
-                                .data(msg, MediaType.TEXT_PLAIN)
-                        );
-                    } catch (IOException ignored) {
-                    } finally {
-                        emitter.complete();
-                    }
-                },
-                () -> {
-                    try {
-                        emitter.send(SseEmitter.event().name("end"));
-                    } catch (IOException ignored) {
-                    } finally {
-                        emitter.complete();
-                    }
-                }
-            );
+        var subscription = stringFlux
+                .subscribe(
+                        chunk -> {
+                            try {
+                                // Avvolgi il chunk in JSON per preservare spazi iniziali/finali attraverso SSE
+                                String json = toJson(new Chunk(chunk));
+                                emitter.send(SseEmitter.event()
+                                        .name("token")
+                                        .data(json, MediaType.APPLICATION_JSON)
+                                );
+                            } catch (IOException e) {
+                                // Se il client ha chiuso la connessione o c'è I/O error, interrompi lo stream
+                                try {
+                                    emitter.send(SseEmitter.event().name("error").data("Connessione client interrotta"));
+                                } catch (IOException ignored) {}
+                                emitter.complete();
+                            }
+                        },
+                        err -> {
+                            try {
+                                String msg = err.getMessage();
+                                if (msg == null) msg = err.getClass().getSimpleName();
+                                emitter.send(SseEmitter.event()
+                                        .name("error")
+                                        .data(msg, MediaType.TEXT_PLAIN)
+                                );
+                            } catch (IOException ignored) {
+                            } finally {
+                                emitter.complete();
+                            }
+                        },
+                        () -> {
+                            try {
+                                emitter.send(SseEmitter.event().name("end"));
+                            } catch (IOException ignored) {
+                            } finally {
+                                emitter.complete();
+                            }
+                        }
+                );
 
         // Se il client chiude la connessione, annulla la sottoscrizione
         emitter.onCompletion(subscription::dispose);
@@ -145,6 +119,52 @@ public class ChatStreamController {
         });
 
         return emitter;
+    }
+
+    /**
+     * Avvia lo streaming SSE dei token della risposta del modello.
+     * Eventi inviati:
+     *  - name: "token" (chunk di testo)
+     *  - name: "end" (fine stream)
+     *  - name: "error" (errore durante l'elaborazione)
+     */
+    @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter postStream(@RequestBody StreamRequest body) {
+        List<Message> messages = Arrays.stream(body.messages())
+                .map(this::convertToMessage)
+                .toList();
+        return emitter(this.chatClient
+                .prompt()
+                .messages(messages)
+                .stream()
+                .content());
+    }
+
+    private Message convertToMessage(RoleMessageRequest msg) {
+        return switch (msg.role()) {
+            case "user" -> new UserMessage(msg.text());
+            case "ai", "assistant" -> new AssistantMessage(msg.text());
+            default -> throw new IllegalArgumentException("Unknown role: " + msg.role());
+        };
+    }
+
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter stream(@RequestParam(name = "message") String message) {
+        if (!StringUtils.hasText(message)) {
+            // errore immediato con SSE minimale (chiudiamo subito)
+            SseEmitter bad = new SseEmitter(0L);
+            try {
+                bad.send(SseEmitter.event().name("error").data("Parametro 'message' obbligatorio"));
+            } catch (IOException ignored) {
+            }
+            bad.complete();
+            return bad;
+        }
+        return emitter(this.chatClient
+                .prompt()
+                .user(message)
+                .stream()
+                .content());
     }
 
     /**
