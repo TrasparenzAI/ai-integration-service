@@ -13,11 +13,14 @@
 	<version>0.0.1</version>
 	<name>ai-integration-service</name>
 	<description>Servizio per l'interfacciamento dei componenti TrasparenzAI con Ollama</description>
-	<properties>
-		<java.version>25</java.version>
-		<spring-ai.version>1.1.0</spring-ai.version>
+ <properties>
+        <java.version>25</java.version>
+        <spring-ai.version>1.1.2</spring-ai.version>
         <jib.maven-plugin.version>3.5.1</jib.maven-plugin.version>
         <springdoc-openapi.version>2.8.5</springdoc-openapi.version>
+        <!-- Ensure UTF-8 is used everywhere to avoid resource filtering encoding issues -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
 	<dependencies>
 		<dependency>
@@ -101,7 +104,26 @@
 	</dependencyManagement>
 
 	<build>
+		<!-- Explicitly disable filtering of resources and set encoding to UTF-8 -->
+		<resources>
+			<resource>
+				<directory>src/main/resources</directory>
+				<filtering>false</filtering>
+				<includes>
+					<include>**/*</include>
+				</includes>
+			</resource>
+		</resources>
 		<plugins>
+			<!-- Make sure resources plugin reads files as UTF-8 -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-resources-plugin</artifactId>
+				<version>3.3.1</version>
+				<configuration>
+					<encoding>${project.build.sourceEncoding}</encoding>
+				</configuration>
+			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
