@@ -59,7 +59,7 @@ public class ChatStreamController {
 
     private final ChatClient chatClient;
     private final ObjectMapper objectMapper;
-    private SseEmitterProperties sseEmitterProperties;
+    private final SseEmitterProperties sseEmitterProperties;
 
 
     private SseEmitter emitter(Flux<String> stringFlux) {
