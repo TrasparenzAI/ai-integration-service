@@ -18,6 +18,7 @@ package it.cnr.anac.transparency.ai_integration_service.v1;
 
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import it.cnr.anac.transparency.ai_integration_service.config.SseEmitterProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -58,11 +59,12 @@ public class ChatStreamController {
 
     private final ChatClient chatClient;
     private final ObjectMapper objectMapper;
+    private SseEmitterProperties sseEmitterProperties;
 
 
     private SseEmitter emitter(Flux<String> stringFlux) {
         // Timeout: 2 minuti per conversazione (0L = infinito, ma meglio evitare connessioni orfane)
-        SseEmitter emitter = new SseEmitter(Duration.ofMinutes(2).toMillis());
+        SseEmitter emitter = new SseEmitter(sseEmitterProperties.getTimeout().toMillis());
 
         // Sottoscrizione allo stream dei contenuti (token) del modello
         var subscription = stringFlux
