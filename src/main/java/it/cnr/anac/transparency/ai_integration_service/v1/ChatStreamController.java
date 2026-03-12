@@ -62,80 +62,46 @@ public class ChatStreamController {
     private final SseEmitterProperties sseEmitterProperties;
 
 
-    private SseEmitter emitter(Flux<String> stringFlux) {
-        // Timeout: 2 minuti per conversazione (0L = infinito, ma meglio evitare connessioni orfane)
-        SseEmitter emitter = new SseEmitter(sseEmitterProperties.getTimeout().toMillis());
-
-        // Sottoscrizione allo stream dei contenuti (token) del modello
-        var subscription = stringFlux
-                .subscribe(
-                        chunk -> {
-                            try {
-                                // Avvolgi il chunk in JSON per preservare spazi iniziali/finali attraverso SSE
-                                String json = toJson(new Chunk(chunk));
-                                emitter.send(SseEmitter.event()
-                                        .name("token")
-                                        .data(json, MediaType.APPLICATION_JSON)
-                                );
-                            } catch (IOException e) {
-                                // Se il client ha chiuso la connessione o c'è I/O error, interrompi lo stream
-                                try {
-                                    emitter.send(SseEmitter.event().name("error").data("Connessione client interrotta"));
-                                } catch (IOException ignored) {}
-                                emitter.complete();
-                            }
-                        },
-                        err -> {
-                            try {
-                                String msg = err.getMessage();
-                                if (msg == null) msg = err.getClass().getSimpleName();
-                                emitter.send(SseEmitter.event()
-                                        .name("error")
-                                        .data(msg, MediaType.TEXT_PLAIN)
-                                );
-                            } catch (IOException ignored) {
-                            } finally {
-                                emitter.complete();
-                            }
-                        },
-                        () -> {
-                            try {
-                                emitter.send(SseEmitter.event().name("end"));
-                            } catch (IOException ignored) {
-                            } finally {
-                                emitter.complete();
-                            }
-                        }
-                );
-
-        // Se il client chiude la connessione, annulla la sottoscrizione
-        emitter.onCompletion(subscription::dispose);
-        emitter.onTimeout(() -> {
-            try {
-                emitter.send(SseEmitter.event().name("error").data("Timeout connessione"));
-            } catch (IOException ignored) {
-            } finally {
-                subscription.dispose();
-                emitter.complete();
-            }
-        });
-
-        return emitter;
+    /**
+     * Trasforma il Flux di stringhe in un Flux di ServerSentEvent, gestendo
+     * correttamente la terminazione e gli errori.
+     */
+    private Flux<ServerSentEvent<Chunk>> createSseFlux(Flux<String> stringFlux) {
+        return stringFlux
+                .map(chunk -> ServerSentEvent.<Chunk>builder()
+                        .event("token")
+                        .data(new Chunk(chunk))
+                        .build())
+                .concatWith(Flux.just(ServerSentEvent.<Chunk>builder()
+                        .event("end")
+                        .build()))
+                .onErrorResume(err -> {
+                    String msg = err.getMessage();
+                    if (msg == null) msg = err.getClass().getSimpleName();
+                    log.error("Errore durante lo streaming AI: {}", msg, err);
+                    return Flux.just(ServerSentEvent.<Chunk>builder()
+                            .event("error")
+                            .data(new Chunk(msg))
+                            .build());
+                })
+                .timeout(sseEmitterProperties.getTimeout())
+                .doOnError(java.util.concurrent.TimeoutException.class, e -> log.warn("Timeout durante lo streaming AI"));
     }
 
     /**
      * Avvia lo streaming SSE dei token della risposta del modello.
      * Eventi inviati:
-     *  - name: "token" (chunk di testo)
+     *  - name: "token" (chunk di testo incapsulato in JSON)
      *  - name: "end" (fine stream)
      *  - name: "error" (errore durante l'elaborazione)
      */
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter postStream(@RequestBody StreamRequest body) {
+    public Flux<ServerSentEvent<Chunk>> postStream(@RequestBody StreamRequest body) {
         List<Message> messages = Arrays.stream(body.messages())
                 .map(this::convertToMessage)
                 .toList();
-        return emitter(this.chatClient
+        
+        return createSseFlux(this.chatClient
                 .prompt()
                 .messages(messages)
                 .stream()
@@ -151,18 +117,15 @@ public class ChatStreamController {
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@RequestParam(name = "message") String message) {
+    public Flux<ServerSentEvent<Chunk>> stream(@RequestParam(name = "message") String message) {
         if (!StringUtils.hasText(message)) {
-            // errore immediato con SSE minimale (chiudiamo subito)
-            SseEmitter bad = new SseEmitter(0L);
-            try {
-                bad.send(SseEmitter.event().name("error").data("Parametro 'message' obbligatorio"));
-            } catch (IOException ignored) {
-            }
-            bad.complete();
-            return bad;
+            return Flux.just(ServerSentEvent.<Chunk>builder()
+                    .event("error")
+                    .data(new Chunk("Parametro 'message' obbligatorio"))
+                    .build());
         }
-        return emitter(this.chatClient
+        
+        return createSseFlux(this.chatClient
                 .prompt()
                 .user(message)
                 .stream()

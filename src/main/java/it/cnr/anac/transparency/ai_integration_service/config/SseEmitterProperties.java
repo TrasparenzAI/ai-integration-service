@@ -28,5 +28,5 @@ import java.time.Duration;
 @Getter
 @Setter
 public class SseEmitterProperties {
-    private Duration timeout = Duration.ofMinutes(2);
+    private Duration timeout = Duration.ofMinutes(5);
 }
