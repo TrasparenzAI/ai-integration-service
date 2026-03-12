@@ -30,7 +30,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @OpenAPIDefinition(
     info = @Info(title = "AI Integration Service",
-    version = "0.0.1",
+    version = "0.1.1",
     description = "AI Integration Service è il componente che si occupa interagire con Ollama per l'utilizzo " +
             "del AI nella generazione di risposte e contenuti per gli utenti."),
     servers = {
