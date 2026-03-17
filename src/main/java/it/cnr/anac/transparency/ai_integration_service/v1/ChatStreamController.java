@@ -16,29 +16,26 @@
  */
 package it.cnr.anac.transparency.ai_integration_service.v1;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.cnr.anac.transparency.ai_integration_service.config.SseEmitterProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.messages.AbstractMessage;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
 import reactor.core.publisher.Flux;
 
-import java.io.IOException;
-import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 
@@ -89,23 +86,32 @@ public class ChatStreamController {
     }
 
     /**
-     * Avvia lo streaming SSE dei token della risposta del modello.
+     * Costruisce le OllamaChatOptions solo se il modello è specificato,
+     * altrimenti ritorna null (Spring AI userà il default configurato).
+     */
+    private OllamaChatOptions buildOptions(String model) {
+        if (!StringUtils.hasText(model)) return null;
+        log.debug("Modello richiesto a runtime: {}", model);
+        return OllamaChatOptions.builder().model(model).build();
+    }
+
+    /**
      * Eventi inviati:
-     *  - name: "token" (chunk di testo incapsulato in JSON)
-     *  - name: "end" (fine stream)
-     *  - name: "error" (errore durante l'elaborazione)
+     * - name: "token" (chunk di testo incapsulato in JSON)
+     * - name: "end" (fine stream)
+     * - name: "error" (errore durante l'elaborazione)
      */
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<Chunk>> postStream(@RequestBody StreamRequest body) {
         List<Message> messages = Arrays.stream(body.messages())
                 .map(this::convertToMessage)
                 .toList();
-        
-        return createSseFlux(this.chatClient
-                .prompt()
-                .messages(messages)
-                .stream()
-                .content());
+
+        var promptSpec = this.chatClient.prompt().messages(messages);
+        OllamaChatOptions options = buildOptions(body.model());
+        if (options != null) promptSpec = promptSpec.options(options);
+
+        return createSseFlux(promptSpec.stream().content());
     }
 
     private Message convertToMessage(RoleMessageRequest msg) {
@@ -117,19 +123,20 @@ public class ChatStreamController {
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<ServerSentEvent<Chunk>> stream(@RequestParam(name = "message") String message) {
+    public Flux<ServerSentEvent<Chunk>> stream(@RequestParam(name = "message") String message,
+                                               @RequestParam(name = "model", required = false) String model) {
         if (!StringUtils.hasText(message)) {
             return Flux.just(ServerSentEvent.<Chunk>builder()
                     .event("error")
                     .data(new Chunk("Parametro 'message' obbligatorio"))
                     .build());
         }
-        
-        return createSseFlux(this.chatClient
-                .prompt()
-                .user(message)
-                .stream()
-                .content());
+
+        var promptSpec = this.chatClient.prompt().user(message);
+        OllamaChatOptions options = buildOptions(model);
+        if (options != null) promptSpec = promptSpec.options(options);
+
+        return createSseFlux(promptSpec.stream().content());
     }
 
     /**
@@ -159,11 +166,10 @@ public class ChatStreamController {
         }
 
         // Chiamata sincrona non-streaming
-        return this.chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content();
+        var promptSpec = this.chatClient.prompt().user(prompt);
+        OllamaChatOptions options = buildOptions(body != null ? body.model() : null);
+        if (options != null) promptSpec = promptSpec.options(options);
+        return promptSpec.call().content();
     }
 
     /**
@@ -172,7 +178,8 @@ public class ChatStreamController {
      */
     @PostMapping(path = {"", "/"}, consumes = MediaType.TEXT_PLAIN_VALUE, produces = MediaType.TEXT_PLAIN_VALUE)
     public String chatText(@RequestBody String prompt,
-                           @RequestParam(name = "message", required = false) String messageParam) {
+                           @RequestParam(name = "message", required = false) String messageParam,
+                           @RequestParam(name = "model", required = false) String model) {
         if (log.isInfoEnabled()) {
             log.info("[POST /api/chat text/plain] message(param)='{}', bodyLength={}",
                     messageParam, (prompt != null ? prompt.length() : null));
@@ -189,11 +196,10 @@ public class ChatStreamController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Parametro 'message' obbligatorio");
         }
 
-        return this.chatClient
-                .prompt()
-                .user(effective)
-                .call()
-                .content();
+        var promptSpec = this.chatClient.prompt().user(effective);
+        OllamaChatOptions options = buildOptions(model);
+        if (options != null) promptSpec = promptSpec.options(options);
+        return promptSpec.call().content();
     }
 
     /**
@@ -207,20 +213,6 @@ public class ChatStreamController {
         return "OK";
     }
 
-    /**
-     * DTO minimale per il body JSON della richiesta POST.
-     */
-    public record MessageRequest(String message) {}
-    /**
-     * DTO minimale per il body JSON della richiesta POST con STREAM.
-     */
-    public record StreamRequest(RoleMessageRequest[] messages) {}
-
-    public record RoleMessageRequest(String role, String text) {}
-
-    // Wrapper JSON per preservare gli spazi nei chunk: {"c":"..."}
-    private record Chunk(String text) {}
-
     private String toJson(Object obj) {
         try {
             return objectMapper.writeValueAsString(obj);
@@ -231,5 +223,26 @@ public class ChatStreamController {
             }
             return "{}";
         }
+    }
+
+    /**
+     * DTO minimale per il body JSON della richiesta POST.
+     * Il campo {@code model} è opzionale: se presente sovrascrive il default configurato.
+     */
+    public record MessageRequest(String message, String model) {
+    }
+
+    /**
+     * DTO minimale per il body JSON della richiesta POST con STREAM.
+     * Il campo {@code model} è opzionale: se presente sovrascrive il default configurato.
+     */
+    public record StreamRequest(RoleMessageRequest[] messages, String model) {
+    }
+
+    public record RoleMessageRequest(String role, String text) {
+    }
+
+    // Wrapper JSON per preservare gli spazi nei chunk: {"c":"..."}
+    private record Chunk(String text) {
     }
 }
