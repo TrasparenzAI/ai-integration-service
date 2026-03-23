@@ -19,6 +19,7 @@ package it.cnr.anac.transparency.ai_integration_service.v1;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,6 +31,7 @@ import java.util.List;
 @RequestMapping(ApiRoutes.BASE_PATH + "/models")
 @RequiredArgsConstructor
 @CrossOrigin
+@RefreshScope
 public class ModelsController {
 
     private final OllamaApi ollamaApi;

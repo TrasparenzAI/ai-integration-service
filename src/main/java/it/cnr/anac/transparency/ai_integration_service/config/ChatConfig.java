@@ -20,18 +20,21 @@ import io.modelcontextprotocol.client.McpSyncClient;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.List;
 
 @Configuration
+@RefreshScope
 public class ChatConfig {
 
     @Value("${ai.systemPrompt}")
     String SYSTEM_PROMPT;
 
     @Bean
+    @RefreshScope
     ChatClient chatClient(ChatClient.Builder chatClientBuilder, List<McpSyncClient> mcpClients) {
          return chatClientBuilder.defaultToolCallbacks(
                  SyncMcpToolCallbackProvider.builder().mcpClients(mcpClients).build())
