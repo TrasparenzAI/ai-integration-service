@@ -29,6 +29,8 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.content.Media;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.core.io.ByteArrayResource;
@@ -45,6 +47,7 @@ import reactor.core.publisher.Flux;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Controller REST per l'interazione con Ollama tramite Spring AI,
@@ -81,17 +84,26 @@ public class ChatStreamController {
     private final ObjectMapper objectMapper;
     private final SseEmitterProperties sseEmitterProperties;
     private final WhisperClient whisperClient;
-
     // -------------------------------------------------------------------------
     // SSE helpers
     // -------------------------------------------------------------------------
 
-    private Flux<ServerSentEvent<Chunk>> createSseFlux(Flux<String> stringFlux) {
-        return stringFlux
-                .map(chunk -> ServerSentEvent.<Chunk>builder()
-                        .event("token")
-                        .data(new Chunk(chunk))
-                        .build())
+    private Flux<ServerSentEvent<Chunk>> createSseFlux(Flux<ChatResponse> chatResponseFlux) {
+        return chatResponseFlux
+                .map(chatResponse -> {
+                    var generations = Optional.ofNullable(chatResponse.getResults())
+                            .orElse(Collections.emptyList());
+                    var thinking = generations.stream()
+                            .map(Generation::getMetadata)
+                            .filter(cgm -> cgm.get("thinking") != null)
+                            .map(cgm -> cgm.get("thinking"))
+                            .map(String::valueOf)
+                            .collect(Collectors.joining());
+                    return ServerSentEvent.<Chunk>builder()
+                            .event("token")
+                            .data(new Chunk(thinking, chatResponse.getResult().getOutput().getText()))
+                            .build();
+                })
                 .concatWith(Flux.just(ServerSentEvent.<Chunk>builder()
                         .event("end")
                         .build()))
@@ -101,7 +113,7 @@ public class ChatStreamController {
                     log.error("Errore durante lo streaming AI: {}", msg, err);
                     return Flux.just(ServerSentEvent.<Chunk>builder()
                             .event("error")
-                            .data(new Chunk(msg))
+                            .data(new Chunk(null, msg))
                             .build());
                 })
                 .timeout(sseEmitterProperties.getTimeout())
@@ -110,9 +122,11 @@ public class ChatStreamController {
     }
 
     private OllamaChatOptions buildOptions(String model) {
-        if (!StringUtils.hasText(model)) return null;
-        log.debug("Modello richiesto a runtime: {}", model);
-        return OllamaChatOptions.builder().model(model).build();
+        return OllamaChatOptions.builder()
+                .model(model)
+                //.enableThinking()
+                .temperature(0.2) // Fondamentale: bassa temperatura per non rompere i tag del thinking
+                .build();
     }
 
     // -------------------------------------------------------------------------
@@ -382,7 +396,7 @@ public class ChatStreamController {
         var promptSpec = this.chatClient.prompt().messages(messages);
         OllamaChatOptions options = buildOptions(body.model());
         if (options != null) promptSpec = promptSpec.options(options);
-        return createSseFlux(promptSpec.stream().content());
+        return createSseFlux(promptSpec.stream().chatResponse());
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -390,12 +404,12 @@ public class ChatStreamController {
             @RequestParam(name = "message") String message,
             @RequestParam(name = "model", required = false) String model) {
         if (!StringUtils.hasText(message)) {
-            return Flux.just(ServerSentEvent.<Chunk>builder().event("error").data(new Chunk("Parametro 'message' obbligatorio")).build());
+            return Flux.just(ServerSentEvent.<Chunk>builder().event("error").data(new Chunk(null, "Parametro 'message' obbligatorio")).build());
         }
         var promptSpec = this.chatClient.prompt().user(message);
         OllamaChatOptions options = buildOptions(model);
         if (options != null) promptSpec = promptSpec.options(options);
-        return createSseFlux(promptSpec.stream().content());
+        return createSseFlux(promptSpec.stream().chatResponse());
     }
 
     // -------------------------------------------------------------------------
@@ -437,7 +451,7 @@ public class ChatStreamController {
         var promptSpec = this.chatClient.prompt().messages(history);
         OllamaChatOptions options = buildOptions(body.model());
         if (options != null) promptSpec = promptSpec.options(options);
-        return createSseFlux(promptSpec.stream().content());
+        return createSseFlux(promptSpec.stream().chatResponse());
     }
 
     // -------------------------------------------------------------------------
@@ -517,5 +531,5 @@ public class ChatStreamController {
     public record ImageMessageRequest(String role, String text, List<DeepChatFile> files) {}
     public record ImageRequest(List<ImageMessageRequest> messages, String model) {}
     public record DeepChatResponse(String text) {}
-    private record Chunk(String text) {}
+    public record Chunk(String thinking, String text) {}
 }
