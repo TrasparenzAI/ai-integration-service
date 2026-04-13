@@ -21,18 +21,23 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.cnr.anac.transparency.ai_integration_service.clients.WhisperClient;
+import it.cnr.anac.transparency.ai_integration_service.config.CapturingToolCallback;
 import it.cnr.anac.transparency.ai_integration_service.config.SseEmitterProperties;
+import it.cnr.anac.transparency.ai_integration_service.config.ToolResultStore;
 import it.cnr.anac.transparency.ai_integration_service.util.ByteArrayMultipartFile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.content.Media;
+import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -47,6 +52,7 @@ import reactor.core.publisher.Flux;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -79,16 +85,21 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping(ApiRoutes.BASE_PATH + "/chat")
 public class ChatStreamController {
+    private static final Pattern DATA_TOOL_RESULTS_RE =
+            Pattern.compile("data-tool-results='([^']+)'");
 
     private final ChatClient chatClient;
     private final ObjectMapper objectMapper;
     private final SseEmitterProperties sseEmitterProperties;
     private final WhisperClient whisperClient;
+
+    private final SyncMcpToolCallbackProvider mcpToolCallbackProvider;
+    private final ToolResultStore toolResultStore;
     // -------------------------------------------------------------------------
     // SSE helpers
     // -------------------------------------------------------------------------
 
-    private Flux<ServerSentEvent<Chunk>> createSseFlux(Flux<ChatResponse> chatResponseFlux) {
+    private Flux<ServerSentEvent<Chunk>> createSseFlux(Flux<ChatResponse> chatResponseFlux, String correlationId) {
         return chatResponseFlux
                 .map(chatResponse -> {
                     var generations = Optional.ofNullable(chatResponse.getResults())
@@ -104,6 +115,14 @@ public class ChatStreamController {
                             .data(new Chunk(thinking, chatResponse.getResult().getOutput().getText()))
                             .build();
                 })
+                .concatWith(Flux.defer(() -> {
+                    String marker = toolResultStore.buildMarkerAndRemove(correlationId);
+                    if (marker == null) return Flux.empty();
+                    return Flux.just(ServerSentEvent.<Chunk>builder()
+                            .event("token")
+                            .data(new Chunk(null, marker))
+                            .build());
+                }))
                 .concatWith(Flux.just(ServerSentEvent.<Chunk>builder()
                         .event("end")
                         .build()))
@@ -335,13 +354,52 @@ public class ChatStreamController {
     // -------------------------------------------------------------------------
     // Convertitore messaggi storici
     // -------------------------------------------------------------------------
-
-    private Message convertToMessage(RoleMessageRequest msg) {
+    private List<Message> convertToMessages(RoleMessageRequest msg) {
+        String text = Optional.ofNullable(msg.text()).orElse(msg.html());
         return switch (msg.role()) {
-            case "user"            -> new UserMessage(msg.text());
-            case "ai", "assistant" -> new AssistantMessage(msg.text());
+            case "user" -> List.of(new UserMessage(text));
+            case "ai", "assistant" -> {
+                if (msg.toolResults() != null && !msg.toolResults().isEmpty()) {
+                    List<Message> result = new ArrayList<>();
+                    String content = StringUtils.hasText(msg.text())
+                            ? msg.text()
+                            : htmlToPlainText(StringUtils.hasText(msg.html()) ? msg.html() : "");
+                    if (StringUtils.hasText(content)) {
+                        result.add(new AssistantMessage(content));
+                    }
+                    List<ToolResponseMessage.ToolResponse> responses = msg.toolResults().stream()
+                            .map(tr -> new ToolResponseMessage.ToolResponse(
+                                    UUID.randomUUID().toString(),
+                                    String.valueOf(tr.get("toolName")),
+                                    safeSerialize(tr.get("result"))
+                            ))
+                            .collect(Collectors.toList());
+                    result.add(ToolResponseMessage.builder()
+                            .responses(responses)
+                            .build());
+                    yield result;
+                }
+                yield List.of(new AssistantMessage(text));
+            }
             default -> throw new IllegalArgumentException("Unknown role: " + msg.role());
         };
+    }
+
+    private String safeSerialize(Object value) {
+        if (value == null) return "";
+        if (value instanceof String s) return s;
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception e) {
+            return String.valueOf(value);
+        }
+    }
+
+    private String htmlToPlainText(String html) {
+        return html
+                .replaceAll("<[^>]+>", " ")  // rimuovi tag
+                .replaceAll("\\s+", " ")     // normalizza spazi
+                .trim();
     }
 
     private String toJson(Object obj) {
@@ -389,27 +447,40 @@ public class ChatStreamController {
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<Chunk>> postStream(@RequestBody StreamRequest body) {
         log.debug("[POST /stream] model={}", body.model());
+        // Crea correlationId e callback wrappati per questa request
+        String correlationId = toolResultStore.createCorrelation();
+        ToolCallback[] wrapped = Arrays.stream(
+                        mcpToolCallbackProvider.getToolCallbacks())
+                .map(cb -> new CapturingToolCallback(cb, toolResultStore, correlationId))
+                .toArray(ToolCallback[]::new);
+
         List<Message> messages = Arrays.stream(body.messages())
-                .filter(rmr -> Optional.ofNullable(rmr.text()).filter(s -> !s.isEmpty()).isPresent())
-                .map(this::convertToMessage)
+                .flatMap(rmr -> convertToMessages(rmr).stream())  // flatMap invece di map
                 .toList();
-        var promptSpec = this.chatClient.prompt().messages(messages);
+        var promptSpec = this.chatClient.prompt().messages(messages).toolCallbacks(wrapped);
         OllamaChatOptions options = buildOptions(body.model());
         if (options != null) promptSpec = promptSpec.options(options);
-        return createSseFlux(promptSpec.stream().chatResponse());
+        return createSseFlux(promptSpec.stream().chatResponse(), correlationId);
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<Chunk>> stream(
             @RequestParam(name = "message") String message,
             @RequestParam(name = "model", required = false) String model) {
+        // Crea correlationId e callback wrappati per questa request
+        String correlationId = toolResultStore.createCorrelation();
+        ToolCallback[] wrapped = Arrays.stream(
+                        mcpToolCallbackProvider.getToolCallbacks())
+                .map(cb -> new CapturingToolCallback(cb, toolResultStore, correlationId))
+                .toArray(ToolCallback[]::new);
+
         if (!StringUtils.hasText(message)) {
             return Flux.just(ServerSentEvent.<Chunk>builder().event("error").data(new Chunk(null, "Parametro 'message' obbligatorio")).build());
         }
-        var promptSpec = this.chatClient.prompt().user(message);
+        var promptSpec = this.chatClient.prompt().user(message).toolCallbacks(wrapped);
         OllamaChatOptions options = buildOptions(model);
         if (options != null) promptSpec = promptSpec.options(options);
-        return createSseFlux(promptSpec.stream().chatResponse());
+        return createSseFlux(promptSpec.stream().chatResponse(), correlationId);
     }
 
     // -------------------------------------------------------------------------
@@ -438,6 +509,13 @@ public class ChatStreamController {
 
     @PostMapping(value = "/image/stream", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<Chunk>> chatWithImageJsonStream(@RequestBody ImageRequest body) {
+        // Crea correlationId e callback wrappati per questa request
+        String correlationId = toolResultStore.createCorrelation();
+        ToolCallback[] wrapped = Arrays.stream(
+                        mcpToolCallbackProvider.getToolCallbacks())
+                .map(cb -> new CapturingToolCallback(cb, toolResultStore, correlationId))
+                .toArray(ToolCallback[]::new);
+
         ImageMessageRequest lastUserMsg = findLastUserMessage(body.messages());
         String textPrompt = lastUserMsg != null ? lastUserMsg.text() : "";
         List<DeepChatFile> files = lastUserMsg != null && lastUserMsg.files() != null ? lastUserMsg.files() : Collections.emptyList();
@@ -448,10 +526,10 @@ public class ChatStreamController {
         List<Message> history = buildHistoryWithoutLast(body.messages());
         history.add(buildUserMessage(textPrompt, files, "it"));
 
-        var promptSpec = this.chatClient.prompt().messages(history);
+        var promptSpec = this.chatClient.prompt().messages(history).toolCallbacks(wrapped);
         OllamaChatOptions options = buildOptions(body.model());
         if (options != null) promptSpec = promptSpec.options(options);
-        return createSseFlux(promptSpec.stream().chatResponse());
+        return createSseFlux(promptSpec.stream().chatResponse(), correlationId);
     }
 
     // -------------------------------------------------------------------------
@@ -526,7 +604,7 @@ public class ChatStreamController {
 
     public record MessageRequest(String message, String model) {}
     public record StreamRequest(RoleMessageRequest[] messages, String model) {}
-    public record RoleMessageRequest(String role, String text) {}
+    public record RoleMessageRequest(String role, String text, String html, List<Map<String, Object>> toolResults) {}
     public record DeepChatFile(String name, String type, String data) {}
     public record ImageMessageRequest(String role, String text, List<DeepChatFile> files) {}
     public record ImageRequest(List<ImageMessageRequest> messages, String model) {}

@@ -19,6 +19,7 @@ package it.cnr.anac.transparency.ai_integration_service.config;
 import io.modelcontextprotocol.client.McpSyncClient;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.context.annotation.Bean;
@@ -35,10 +36,18 @@ public class ChatConfig {
 
     @Bean
     @RefreshScope
-    ChatClient chatClient(ChatClient.Builder chatClientBuilder, List<McpSyncClient> mcpClients) {
-         return chatClientBuilder.defaultToolCallbacks(
-                 SyncMcpToolCallbackProvider.builder().mcpClients(mcpClients).build())
-                 .defaultSystem(SYSTEM_PROMPT)
-                 .build();
+    public SyncMcpToolCallbackProvider mcpToolCallbackProvider(List<McpSyncClient> mcpClients) {
+        return SyncMcpToolCallbackProvider.builder()
+                .mcpClients(mcpClients)
+                .build();
+    }
+
+    @Bean
+    @RefreshScope
+    ChatClient chatClient(ChatClient.Builder chatClientBuilder) {
+        // Niente defaultToolCallbacks qui — li passiamo per request
+        return chatClientBuilder
+                .defaultSystem(SYSTEM_PROMPT)
+                .build();
     }
 }
