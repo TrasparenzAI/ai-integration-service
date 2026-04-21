@@ -97,8 +97,7 @@ public class ChatStreamController {
 
     private final SyncMcpToolCallbackProvider mcpToolCallbackProvider;
     private final ToolResultStore toolResultStore;
-    @Autowired(required = false)
-    private TtsService ttsService;
+    private final TtsService ttsService;
     // -------------------------------------------------------------------------
     // SSE helpers
     // -------------------------------------------------------------------------
@@ -138,7 +137,7 @@ public class ChatStreamController {
                 // evento audio: chiama Kokoro con il testo completo accumulato
                 .concatWith(Flux.defer(() -> {
                     String completeText = fullText.toString().trim();
-                    if (!StringUtils.hasText(completeText) || ttsService == null) {
+                    if (!StringUtils.hasText(completeText) || !ttsService.isEnable()) {
                         return Flux.empty();
                     }
                     return ttsService.synthesizeBase64(completeText)

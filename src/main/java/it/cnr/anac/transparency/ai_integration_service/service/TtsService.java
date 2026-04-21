@@ -20,6 +20,7 @@ import it.cnr.anac.transparency.ai_integration_service.config.TextToSpeechProper
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Service;
@@ -33,15 +34,15 @@ import java.util.Map;
 
 @Service
 @Slf4j
-@ConditionalOnProperty(
-        value = "ai.text-to-speech.enable",
-        havingValue = "true",
-        matchIfMissing = false
-)
+@RefreshScope
 public class TtsService {
 
     private final WebClient ttsClient;
     private final TextToSpeechProperties properties;
+
+    public boolean isEnable() {
+        return properties.getEnable();
+    }
 
     public TtsService(WebClient.Builder builder,
                       @Value("${kokoro.base-url:http://kokoro:8880}") String baseUrl, TextToSpeechProperties properties) {
