@@ -24,6 +24,7 @@ import it.cnr.anac.transparency.ai_integration_service.clients.WhisperClient;
 import it.cnr.anac.transparency.ai_integration_service.config.CapturingToolCallback;
 import it.cnr.anac.transparency.ai_integration_service.config.SseEmitterProperties;
 import it.cnr.anac.transparency.ai_integration_service.config.ToolResultStore;
+import it.cnr.anac.transparency.ai_integration_service.service.TtsService;
 import it.cnr.anac.transparency.ai_integration_service.util.ByteArrayMultipartFile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +39,7 @@ import org.springframework.ai.content.Media;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -95,11 +97,16 @@ public class ChatStreamController {
 
     private final SyncMcpToolCallbackProvider mcpToolCallbackProvider;
     private final ToolResultStore toolResultStore;
+    @Autowired(required = false)
+    private TtsService ttsService;
     // -------------------------------------------------------------------------
     // SSE helpers
     // -------------------------------------------------------------------------
 
     private Flux<ServerSentEvent<Chunk>> createSseFlux(Flux<ChatResponse> chatResponseFlux, String correlationId) {
+        // Accumula il testo completo durante lo stream
+        StringBuilder fullText = new StringBuilder();
+
         return chatResponseFlux
                 .map(chatResponse -> {
                     var generations = Optional.ofNullable(chatResponse.getResults())
@@ -110,9 +117,14 @@ public class ChatStreamController {
                             .map(cgm -> cgm.get("thinking"))
                             .map(String::valueOf)
                             .collect(Collectors.joining());
+                    String tokenText = chatResponse.getResult().getOutput().getText();
+                    if (StringUtils.hasText(tokenText)) {
+                        fullText.append(tokenText);   // ← accumula qui
+                    }
+
                     return ServerSentEvent.<Chunk>builder()
                             .event("token")
-                            .data(new Chunk(thinking, chatResponse.getResult().getOutput().getText()))
+                            .data(new Chunk(thinking, tokenText))
                             .build();
                 })
                 .concatWith(Flux.defer(() -> {
@@ -122,6 +134,19 @@ public class ChatStreamController {
                             .event("token")
                             .data(new Chunk(null, marker))
                             .build());
+                }))
+                // evento audio: chiama Kokoro con il testo completo accumulato
+                .concatWith(Flux.defer(() -> {
+                    String completeText = fullText.toString().trim();
+                    if (!StringUtils.hasText(completeText) || ttsService == null) {
+                        return Flux.empty();
+                    }
+                    return ttsService.synthesizeBase64(completeText)
+                            .map(audioBase64 -> ServerSentEvent.<Chunk>builder()
+                                    .event("audio")          // ← evento SSE dedicato
+                                    .data(new Chunk(null, null, audioBase64))
+                                    .build())
+                            .flux();
                 }))
                 .concatWith(Flux.just(ServerSentEvent.<Chunk>builder()
                         .event("end")
@@ -609,5 +634,10 @@ public class ChatStreamController {
     public record ImageMessageRequest(String role, String text, List<DeepChatFile> files) {}
     public record ImageRequest(List<ImageMessageRequest> messages, String model) {}
     public record DeepChatResponse(String text) {}
-    public record Chunk(String thinking, String text) {}
+    public record Chunk(String thinking, String text, String audio) {
+        // costruttore di compatibilità per i punti che usano il vecchio record
+        public Chunk(String thinking, String text) {
+            this(thinking, text, null);
+        }
+    }
 }
