@@ -37,9 +37,9 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.content.Media;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.ai.tool.ToolCallback;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -98,6 +98,7 @@ public class ChatStreamController {
     private final SyncMcpToolCallbackProvider mcpToolCallbackProvider;
     private final ToolResultStore toolResultStore;
     private final TtsService ttsService;
+    private final OllamaChatModel chatModel;
     // -------------------------------------------------------------------------
     // SSE helpers
     // -------------------------------------------------------------------------
@@ -165,11 +166,11 @@ public class ChatStreamController {
     }
 
     private OllamaChatOptions buildOptions(String model) {
-        return OllamaChatOptions.builder()
-                .model(model)
-                //.enableThinking()
-                .temperature(0.2) // Fondamentale: bassa temperatura per non rompere i tag del thinking
-                .build();
+        OllamaChatOptions base = OllamaChatOptions.fromOptions(
+                (OllamaChatOptions) chatModel.getDefaultOptions()
+        );
+        base.setModel(model);
+        return base;
     }
 
     // -------------------------------------------------------------------------

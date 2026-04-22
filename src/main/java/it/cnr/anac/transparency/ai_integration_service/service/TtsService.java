@@ -85,32 +85,45 @@ public class TtsService {
     private String markdownToNaturalText(String markdown) {
         if (markdown == null) return "";
         return markdown
-                // titoli → testo seguito da punto (pausa naturale)
-                .replaceAll("(?m)^#{1,6}\\s+(.+)$", "$1. ")
-                // grassetto/corsivo → solo testo
-                .replaceAll("\\*{1,3}([^*]+)\\*{1,3}", "$1")
-                .replaceAll("_{1,3}([^_]+)_{1,3}", "$1")
-                // codice → skip
-                .replaceAll("```[\\s\\S]*?```", "")
+                // normalizza line endings
+                .replace("\r\n", "\n")
+                .replace("\r", "\n")
+                .replaceAll("#{1,6}\\s+", "")
+                // titoli (con eventuale spazio iniziale)
+                .replaceAll("(?m)^\\s*#{1,6}\\s+(.+)$", "$1. ")
+                // grassetto+corsivo combinati (***testo***)
+                .replaceAll("\\*{3}([^*]+)\\*{3}", "$1")
+                // grassetto (**testo** o __testo__)
+                .replaceAll("\\*{2}([^*]+)\\*{2}", "$1")
+                .replaceAll("_{2}([^_]+)_{2}", "$1")
+                // corsivo (*testo* o _testo_) — dopo il grassetto!
+                .replaceAll("\\*([^*\\n]+)\\*", "$1")
+                .replaceAll("_([^_\\n]+)_", "$1")
+                // blocchi di codice
+                .replaceAll("(?s)```.*?```", "")
                 .replaceAll("`([^`]+)`", "$1")
-                // link
-                .replaceAll("\\[([^\\]]+)\\]\\([^)]+\\)", "$1")
+                // link e immagini
                 .replaceAll("!\\[[^\\]]*\\]\\([^)]+\\)", "")
-                // liste → voce con virgola tra elementi
-                .replaceAll("(?m)^[-*+]\\s+(.+)$", "$1, ")
-                .replaceAll("(?m)^\\d+\\.\\s+(.+)$", "$1, ")
+                .replaceAll("\\[([^\\]]+)\\]\\([^)]+\\)", "$1")
+                // liste non ordinate
+                .replaceAll("(?m)^\\s*[-*+]\\s+(.+)$", "$1, ")
+                // liste ordinate
+                .replaceAll("(?m)^\\s*\\d+\\.\\s+(.+)$", "$1, ")
                 // blockquote
-                .replaceAll("(?m)^>\\s+", "")
-                // separatori → pausa lunga con puntini
-                .replaceAll("(?m)^[-*_]{3,}\\s*$", "... ")
-                // HTML
+                .replaceAll("(?m)^\\s*>+\\s*", "")
+                // separatori orizzontali
+                .replaceAll("(?m)^\\s*[-*_]{3,}\\s*$", ". ")
+                // HTML tags
                 .replaceAll("<[^>]+>", "")
-                // righe vuote → pausa con punto
+                // paragrafi → pausa
                 .replaceAll("\\n{2,}", ". ")
                 .replaceAll("\\n", ", ")
-                // doppi spazi e punteggiatura ridondante
+                // pulizia punteggiatura ridondante
+                .replaceAll(",\\s*,", ",")
                 .replaceAll(",\\s*\\.", ".")
                 .replaceAll("\\.\\s*\\.", ".")
+                .replaceAll("\\.\\s*,", ".")
+                .replaceAll("([.!?])\\s*,", "$1")
                 .replaceAll("\\s{2,}", " ")
                 .trim();
     }
