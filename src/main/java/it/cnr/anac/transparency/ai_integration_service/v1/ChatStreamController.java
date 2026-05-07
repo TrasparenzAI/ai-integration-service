@@ -49,6 +49,7 @@ import org.springframework.util.MimeTypeUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 
@@ -151,13 +152,22 @@ public class ChatStreamController {
                 .concatWith(Flux.just(ServerSentEvent.<Chunk>builder()
                         .event("end")
                         .build()))
-                .onErrorResume(err -> {
-                    String msg = err.getMessage();
-                    if (msg == null) msg = err.getClass().getSimpleName();
-                    log.error("Errore durante lo streaming AI: {}", msg, err);
+                .onErrorResume(WebClientResponseException.class, err -> {
+                    String rawBody = err.getResponseBodyAsString();
+                    log.error("Ollama 400 body: {}", rawBody);
+
+                    // Estrai solo il messaggio dal JSON {"error":"..."}
+                    String userMessage;
+                    try {
+                        var node = objectMapper.readTree(rawBody);
+                        userMessage = node.path("error").asText(rawBody); // fallback al raw se "error" non c'è
+                    } catch (Exception parseEx) {
+                        userMessage = rawBody != null ? rawBody : err.getClass().getSimpleName();
+                    }
+
                     return Flux.just(ServerSentEvent.<Chunk>builder()
                             .event("error")
-                            .data(new Chunk(null, msg))
+                            .data(Chunk.ofError(userMessage))
                             .build());
                 })
                 .timeout(sseEmitterProperties.getTimeout())
@@ -634,10 +644,9 @@ public class ChatStreamController {
     public record ImageMessageRequest(String role, String text, List<DeepChatFile> files) {}
     public record ImageRequest(List<ImageMessageRequest> messages, String model) {}
     public record DeepChatResponse(String text) {}
-    public record Chunk(String thinking, String text, String audio) {
-        // costruttore di compatibilità per i punti che usano il vecchio record
-        public Chunk(String thinking, String text) {
-            this(thinking, text, null);
-        }
+    public record Chunk(String thinking, String text, String audio, String error) {
+        public Chunk(String thinking, String text) { this(thinking, text, null, null); }
+        public Chunk(String thinking, String text, String audio) { this(thinking, text, audio, null); }
+        public static Chunk ofError(String message) { return new Chunk(null, null, null, message); }
     }
 }
