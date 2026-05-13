@@ -180,6 +180,12 @@ public class ChatStreamController {
                 (OllamaChatOptions) chatModel.getDefaultOptions()
         );
         base.setModel(model);
+        // The think option is only supported by certain models (e.g. qwen3, deepseek-r1).
+        // When a custom model is specified, clear the thinkOption to avoid 400 errors
+        // from models that do not support this parameter.
+        if (StringUtils.hasText(model)) {
+            base.setThinkOption(null);
+        }
         return base;
     }
 

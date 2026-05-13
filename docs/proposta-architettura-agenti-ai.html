@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proposta Architettura Multi-Agent AI — TransparenzAI Integration Service</title>
+  <style>
+    :root {
+      --primary: #1a3a5c;
+      --accent: #2e7bcf;
+      --accent-light: #e8f1fb;
+      --text: #1c1c1e;
+      --muted: #6e6e73;
+      --border: #d1d1d6;
+      --bg: #ffffff;
+      --code-bg: #f5f5f7;
+      --warning-bg: #fff8e1;
+      --warning-border: #f9a825;
+      --success-bg: #e8f5e9;
+      --success-border: #388e3c;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.65;
+      color: var(--text);
+      background: var(--bg);
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 48px 60px;
+    }
+
+    /* Cover */
+    .cover {
+      text-align: center;
+      padding: 60px 0 50px;
+      border-bottom: 2px solid var(--primary);
+      margin-bottom: 48px;
+    }
+    .cover .logo-area {
+      font-size: 10pt;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+    .cover h1 {
+      font-size: 26pt;
+      font-weight: 700;
+      color: var(--primary);
+      line-height: 1.25;
+      margin-bottom: 16px;
+    }
+    .cover .subtitle {
+      font-size: 14pt;
+      color: var(--accent);
+      font-weight: 500;
+      margin-bottom: 32px;
+    }
+    .cover .meta {
+      font-size: 10pt;
+      color: var(--muted);
+      line-height: 2;
+    }
+
+    /* TOC */
+    .toc {
+      background: var(--accent-light);
+      border-left: 4px solid var(--accent);
+      border-radius: 0 8px 8px 0;
+      padding: 24px 28px;
+      margin-bottom: 48px;
+    }
+    .toc h2 { font-size: 11pt; color: var(--primary); margin-bottom: 12px; }
+    .toc ol { padding-left: 20px; }
+    .toc li { margin-bottom: 4px; font-size: 10pt; }
+    .toc a { color: var(--accent); text-decoration: none; }
+
+    /* Headings */
+    h1 { font-size: 20pt; color: var(--primary); margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+    h2 { font-size: 14pt; color: var(--primary); margin: 32px 0 12px; }
+    h3 { font-size: 11pt; color: var(--accent); margin: 24px 0 10px; font-weight: 600; }
+
+    p { margin-bottom: 12px; }
+
+    /* Callout boxes */
+    .callout {
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+    .callout-info { background: var(--accent-light); border-left: 4px solid var(--accent); }
+    .callout-warning { background: var(--warning-bg); border-left: 4px solid var(--warning-border); }
+    .callout-success { background: var(--success-bg); border-left: 4px solid var(--success-border); }
+    .callout strong { display: block; margin-bottom: 6px; font-size: 10pt; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-size: 10pt;
+    }
+    th {
+      background: var(--primary);
+      color: #fff;
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 600;
+    }
+    td {
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    tr:nth-child(even) td { background: #f9f9fb; }
+    tr:hover td { background: var(--accent-light); }
+
+    /* Code */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 18px;
+      font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+      font-size: 9pt;
+      overflow-x: auto;
+      margin: 16px 0;
+      line-height: 1.5;
+    }
+    code {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+      font-size: 9pt;
+    }
+    pre code { background: none; border: none; padding: 0; }
+
+    /* Architecture diagram */
+    .arch-diagram {
+      background: #f0f4f9;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+      font-size: 9pt;
+      line-height: 1.8;
+      margin: 20px 0;
+      text-align: center;
+      color: var(--primary);
+    }
+
+    /* Phase timeline */
+    .phases { margin: 20px 0; }
+    .phase {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+      align-items: flex-start;
+    }
+    .phase-badge {
+      background: var(--primary);
+      color: #fff;
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 11pt;
+      flex-shrink: 0;
+    }
+    .phase-content { flex: 1; }
+    .phase-title { font-weight: 600; color: var(--primary); margin-bottom: 4px; }
+    .phase-desc { font-size: 10pt; color: var(--muted); }
+
+    /* Agent cards */
+    .agent-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 20px 0;
+    }
+    .agent-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      background: #fafafa;
+    }
+    .agent-card .agent-name {
+      font-weight: 700;
+      color: var(--primary);
+      font-size: 10pt;
+      margin-bottom: 6px;
+    }
+    .agent-card .agent-model {
+      font-size: 9pt;
+      color: var(--accent);
+      font-family: "SF Mono", monospace;
+      margin-bottom: 8px;
+    }
+    .agent-card .agent-desc {
+      font-size: 9.5pt;
+      color: var(--text);
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: 60px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      font-size: 9pt;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    ul, ol { padding-left: 22px; margin-bottom: 12px; }
+    li { margin-bottom: 5px; }
+
+    @media print {
+      body { padding: 20px 28px; font-size: 10pt; }
+      .cover { padding: 30px 0 30px; }
+      h1 { font-size: 16pt; }
+      .cover h1 { font-size: 22pt; }
+      .agent-grid { grid-template-columns: 1fr 1fr; }
+      pre { font-size: 8pt; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- COVER -->
+<div class="cover">
+  <div class="logo-area">Consiglio Nazionale delle Ricerche &nbsp;|&nbsp; TransparenzAI</div>
+  <h1>Proposta Architettura<br>Multi-Agent AI</h1>
+  <div class="subtitle">AI Integration Service — TransparenzAI</div>
+  <div class="meta">
+    Versione 1.0 &nbsp;·&nbsp; Aprile 2025<br>
+    Documento interno — bozza di discussione
+  </div>
+</div>
+
+<!-- TOC -->
+<div class="toc">
+  <h2>Indice</h2>
+  <ol>
+    <li><a href="#contesto">Contesto e architettura attuale</a></li>
+    <li><a href="#motivazioni">Motivazioni per l'introduzione degli Agenti</a></li>
+    <li><a href="#architettura">Architettura Multi-Agent proposta</a></li>
+    <li><a href="#agenti">Agenti di dominio</a></li>
+    <li><a href="#embabel">Integrazione con Embabel</a></li>
+    <li><a href="#modelli">Strategia dei modelli Open Weight</a></li>
+    <li><a href="#migrazione">Piano di migrazione</a></li>
+    <li><a href="#rischi">Rischi e mitigazioni</a></li>
+    <li><a href="#conclusioni">Conclusioni e prossimi passi</a></li>
+  </ol>
+</div>
+
+<!-- 1. CONTESTO -->
+<h1 id="contesto">1. Contesto e architettura attuale</h1>
+
+<p>Il progetto <strong>AI Integration Service</strong> è un microservizio Spring Boot che espone API REST/SSE per l'interazione con modelli linguistici locali (Ollama) nel contesto di TransparenzAI. Attualmente il servizio:</p>
+
+<ul>
+  <li>Utilizza <strong>Spring AI 2.0.0-M4</strong> come layer di astrazione sui modelli LLM</li>
+  <li>Si appoggia a <strong>Ollama</strong> per l'esecuzione locale di modelli open weight</li>
+  <li>Supporta <strong>tool MCP</strong> (Model Context Protocol) per l'accesso ai servizi TransparenzAI</li>
+  <li>Gestisce input multimodali: testo, immagini e audio (trascrizione via Whisper)</li>
+  <li>Offre output opzionale via Text-to-Speech (Kokoro)</li>
+  <li>Protegge le API con OAuth2/JWT (Keycloak)</li>
+</ul>
+
+<h2>Pattern agent-like già presenti</h2>
+
+<p>L'architettura attuale implementa già alcuni pattern tipici degli agenti AI, pur non essendo esplicitamente strutturata come tale:</p>
+
+<table>
+  <thead>
+    <tr><th>Pattern attuale</th><th>Corrispondenza nel mondo agent</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>CapturingToolCallback</code> + tool loop</td><td>Agentic loop: l'LLM decide quando invocare tool</td></tr>
+    <tr><td><code>ToolResultStore</code> con <code>correlationId</code></td><td>State management per sessione</td></tr>
+    <tr><td>Opzione <code>think=true</code> su qwen3</td><td>Extended thinking / chain-of-thought planning</td></tr>
+    <tr><td>Pre-processing audio (Whisper → testo)</td><td>Pipeline multi-step prima dell'LLM principale</td></tr>
+    <tr><td>History messaggi multi-turn</td><td>Memoria conversazionale</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-info">
+  <strong>Osservazione chiave</strong>
+  Il servizio è sostanzialmente un <em>agente implicito singolo</em>: un unico modello (qwen3-next:80b) gestisce tutti i domini applicativi — bandi, normativa, dati, multimedia — con un sistema prompt generico. La proposta è di rendere questa struttura esplicita, modulare e ottimizzata.
+</div>
+
+<!-- 2. MOTIVAZIONI -->
+<h1 id="motivazioni">2. Motivazioni per l'introduzione degli Agenti</h1>
+
+<h2>Limiti dell'approccio attuale</h2>
+
+<ul>
+  <li><strong>Un solo modello per tutto:</strong> qwen3-next:80b è usato anche per task che richiederebbero modelli più leggeri (es. classificazione del dominio, gestione di tool call semplici), con latenza e costo computazionale eccessivi</li>
+  <li><strong>Sistema prompt monolitico:</strong> un unico prompt in italiano cerca di coprire tutti i casi d'uso, diventando difficile da manutenere e ottimizzare</li>
+  <li><strong>Logica concentrata nel controller:</strong> <code>ChatStreamController</code> gestisce routing, pre-processing, tool invocation e output, violando il principio di singola responsabilità</li>
+  <li><strong>Scarsa estendibilità:</strong> aggiungere un nuovo dominio applicativo richiede modifiche al controller e al sistema prompt</li>
+</ul>
+
+<h2>Vantaggi attesi con gli Agenti</h2>
+
+<table>
+  <thead>
+    <tr><th>Vantaggio</th><th>Impatto pratico</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Modello giusto per ogni task</td><td>Riduzione latenza e carico GPU per task di routing e tool calling</td></tr>
+    <tr><td>Prompt ottimizzati per dominio</td><td>Qualità delle risposte superiore su bandi, normativa, dati</td></tr>
+    <tr><td>Separazione responsabilità</td><td>Codice più manutenibile e testabile</td></tr>
+    <tr><td>Aggiunta di nuovi domini</td><td>Basta aggiungere un nuovo <code>@Agent</code> senza toccare l'esistente</td></tr>
+    <tr><td>Osservabilità</td><td>Ogni agente è un'unità monitorabile indipendentemente</td></tr>
+    <tr><td>Contesto condiviso esplicito</td><td>Il "world" rende tracciabile cosa viene passato tra agenti</td></tr>
+  </tbody>
+</table>
+
+<!-- 3. ARCHITETTURA -->
+<h1 id="architettura">3. Architettura Multi-Agent proposta</h1>
+
+<div class="arch-diagram">
+<pre style="background:none; border:none; text-align:left; padding:0; margin:0;">
+  Client HTTP/SSE  (endpoint invariato: POST /v1/chat/stream)
+          │
+          ▼
+  ┌───────────────────────────────────┐
+  │         OrchestratorAgent         │   modello: qwen2.5:14b
+  │  • classifica il dominio          │   (veloce, specializzato in routing)
+  │  • pianifica l'esecuzione         │
+  │  • compone la risposta finale     │
+  └───────────────────────────────────┘
+          │
+          │   "World" — contesto condiviso tra agenti
+          │
+  ┌───────┼──────────────────────────────────────┐
+  │       │              │              │         │
+  ▼       ▼              ▼              ▼         ▼
+┌──────┐ ┌──────────┐ ┌──────────┐ ┌────────┐ ┌──────────┐
+│Bandi │ │Normativa │ │Multimedia│ │  Dati  │ │ (futuro) │
+│Agent │ │  Agent   │ │  Agent   │ │  Agent │ │          │
+│      │ │          │ │          │ │        │ │          │
+│qwen3 │ │  qwen3   │ │minicpm-v │ │qwen2.5 │ │          │
+│:80b  │ │   :80b   │ │ +Whisper │ │ :14b   │ │          │
+└──────┘ └──────────┘ └──────────┘ └────────┘ └──────────┘
+    │          │            │           │
+    └──────────┴────────────┴───────────┘
+                      │
+              Tool MCP TransparenzAI
+              (OAuth2, on-behalf-of)</pre>
+</div>
+
+<h2>Principi di design</h2>
+
+<ol>
+  <li><strong>Trasparenza verso i client:</strong> l'endpoint <code>/v1/chat/stream</code> rimane invariato; l'orchestrazione è interna al servizio</li>
+  <li><strong>Solo modelli open weight:</strong> tutti gli agenti usano modelli eseguibili localmente via Ollama, senza dipendenza da API cloud</li>
+  <li><strong>Contesto condiviso esplicito:</strong> il <code>TransparenzaWorld</code> formalizza cosa viene passato tra agenti</li>
+  <li><strong>Estendibilità per dominio:</strong> un nuovo dominio richiede solo un nuovo <code>@Agent</code> Spring bean</li>
+  <li><strong>Spring-first:</strong> Embabel si integra nativamente con Spring Boot, quindi tutti i bean esistenti (ChatClient, Feign, WebClient) restano riutilizzabili</li>
+</ol>
+
+<!-- 4. AGENTI -->
+<h1 id="agenti">4. Agenti di dominio</h1>
+
+<div class="agent-grid">
+  <div class="agent-card">
+    <div class="agent-name">OrchestratorAgent</div>
+    <div class="agent-model">ollama:qwen2.5:14b</div>
+    <div class="agent-desc">
+      Punto di ingresso unico. Classifica il dominio della richiesta (bandi, normativa, dati, multimedia), pianifica l'ordine di esecuzione degli agenti e compone la risposta finale in formato streaming SSE.
+    </div>
+  </div>
+  <div class="agent-card">
+    <div class="agent-name">BandiAppaltiAgent</div>
+    <div class="agent-model">ollama:qwen3-next:80b</div>
+    <div class="agent-desc">
+      Specializzato nell'analisi di bandi di gara, contratti pubblici e documentazione appalti. Conosce la struttura dei CIG, le fasi procedurali e i criteri di valutazione. Può invocare tool MCP per recuperare dati da ANAC.
+    </div>
+  </div>
+  <div class="agent-card">
+    <div class="agent-name">NormativaAgent</div>
+    <div class="agent-model">ollama:qwen3-next:80b</div>
+    <div class="agent-desc">
+      Orientato alla consultazione normativa: D.Lgs 36/2023 (Codice dei Contratti), linee guida ANAC, pareri e atti di regolazione. Fornisce risposte precise con riferimenti normativi.
+    </div>
+  </div>
+  <div class="agent-card">
+    <div class="agent-name">MultimedialeAgent</div>
+    <div class="agent-model">ollama:minicpm-v + Whisper</div>
+    <div class="agent-desc">
+      Gestisce l'elaborazione di contenuti non testuali: trascrizione audio via Whisper STT, analisi e descrizione di immagini con un modello vision. Produce output testuale per gli altri agenti.
+    </div>
+  </div>
+  <div class="agent-card">
+    <div class="agent-name">DatiTrasparenzaAgent</div>
+    <div class="agent-model">ollama:qwen2.5:14b</div>
+    <div class="agent-desc">
+      Interfaccia con i tool MCP di TransparenzAI per la ricerca e aggregazione di dati strutturati (appalti, enti, importi). Usa un modello leggero perché il task è prevalentemente di tool calling.
+    </div>
+  </div>
+  <div class="agent-card" style="border-style: dashed; background: #fafafa;">
+    <div class="agent-name" style="color: var(--muted);">AgentiFuturi (esempio)</div>
+    <div class="agent-model" style="color: var(--muted);">da definire</div>
+    <div class="agent-desc" style="color: var(--muted);">
+      L'architettura è estendibile: analisi di rischio corruzione, confronto offerte, reportistica automatica, notifiche proattive, ecc.
+    </div>
+  </div>
+</div>
+
+<!-- 5. EMBABEL -->
+<h1 id="embabel">5. Integrazione con Embabel</h1>
+
+<h2>Perché Embabel</h2>
+
+<p>Embabel è un framework open source (Apache 2.0) per la costruzione di agenti AI, progettato specificamente per l'ecosistema Spring. Si basa su Spring AI e introduce un livello dichiarativo per la definizione di agenti, azioni e obiettivi.</p>
+
+<table>
+  <thead>
+    <tr><th>Caratteristica</th><th>Valore per questo progetto</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Spring-native (<code>@Agent</code>, <code>@Action</code>)</td><td>Curva di apprendimento minima, skill Spring già presenti</td></tr>
+    <tr><td>Modello per agente configurabile</td><td>Mapping modello ↔ agente dichiarativo nell'annotazione</td></tr>
+    <tr><td>World object (contesto condiviso)</td><td>Sostituisce l'attuale <code>ToolResultStore</code> in modo strutturato</td></tr>
+    <tr><td>Planning basato su precondizioni/postcondizioni</td><td>L'orchestratore può ragionare sull'ordine di esecuzione</td></tr>
+    <tr><td>Integrazione Spring AI nativa</td><td>ChatClient, ToolCallback, MCP esistenti riutilizzabili</td></tr>
+  </tbody>
+</table>
+
+<h2>Struttura del progetto con Embabel</h2>
+
+<pre>ai_integration_service/
+├── agents/
+│   ├── OrchestratorAgent.java
+│   ├── BandiAppaltiAgent.java
+│   ├── NormativaAgent.java
+│   ├── MultimedialeAgent.java
+│   └── DatiTrasparenzaAgent.java
+├── world/
+│   └── TransparenzaWorld.java        ← contesto condiviso tra agenti
+├── config/
+│   ├── ChatConfig.java               ← invariato
+│   ├── AgentConfig.java              ← nuovo: config modelli per agente
+│   └── McpSyncClientExchangeFilterFunction.java  ← invariato
+└── v1/
+    └── ChatStreamController.java     ← invariato dall'esterno</pre>
+
+<h2>Dipendenza Maven</h2>
+
+<pre>&lt;dependency&gt;
+    &lt;groupId&gt;com.embabel&lt;/groupId&gt;
+    &lt;artifactId&gt;embabel-agent-api&lt;/artifactId&gt;
+    &lt;version&gt;0.2.0&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;com.embabel&lt;/groupId&gt;
+    &lt;artifactId&gt;embabel-agent-spring-boot-starter&lt;/artifactId&gt;
+    &lt;version&gt;0.2.0&lt;/version&gt;
+&lt;/dependency&gt;</pre>
+
+<h2>Il World — contesto condiviso</h2>
+
+<pre>/**
+ * Contesto condiviso tra tutti gli agenti per una singola richiesta.
+ * Embabel lo gestisce come stato del processo di pianificazione.
+ */
+public class TransparenzaWorld {
+
+    // Input dalla richiesta HTTP
+    private String userQuery;
+    private List&lt;Message&gt; conversationHistory;
+    private List&lt;Media&gt;  attachedImages;
+
+    // Prodotto dall'OrchestratorAgent
+    private String detectedDomain;   // "bandi" | "normativa" | "multimedia" | "dati"
+    private List&lt;String&gt; agentPlan;  // ordine di esecuzione pianificato
+
+    // Prodotto dal MultimedialeAgent
+    private String audioTranscription;
+    private String imageAnalysis;
+
+    // Prodotto dal DatiTrasparenzaAgent
+    private List&lt;ToolResult&gt; mcpResults;
+
+    // Prodotto dall'agente di dominio principale
+    private String domainAnalysis;
+
+    // Prodotto dall'OrchestratorAgent al termine
+    private String finalResponse;
+
+    // Metadati
+    private String correlationId;
+    private Instant startTime;
+}</pre>
+
+<h2>Esempio: OrchestratorAgent</h2>
+
+<pre>@Agent(
+    description = "Orchestratore centrale: classifica il dominio e coordina gli agenti specializzati",
+    model = "ollama:qwen2.5:14b"  // modello leggero per decisioni di routing
+)
+public class OrchestratorAgent {
+
+    @Action(
+        description = "Classifica il dominio della richiesta utente",
+        post = { "world.detectedDomain != null" }
+    )
+    public TransparenzaWorld classificaDominio(TransparenzaWorld world) {
+        // prompt conciso: solo classificazione, nessun ragionamento lungo
+        String domain = chatClient.prompt()
+            .system("Classifica la richiesta in uno di: bandi, normativa, multimedia, dati. " +
+                    "Rispondi con una sola parola.")
+            .user(world.getUserQuery())
+            .call().content();
+        world.setDetectedDomain(domain.trim().toLowerCase());
+        return world;
+    }
+
+    @Action(
+        description = "Compone la risposta finale e la invia in streaming",
+        pre  = { "world.domainAnalysis != null" },
+        post = { "world.finalResponse != null" }
+    )
+    public TransparenzaWorld componiRisposta(TransparenzaWorld world) {
+        // integra i risultati degli agenti di dominio
+        // e produce la risposta finale in formato coerente
+        ...
+        return world;
+    }
+}</pre>
+
+<h2>Esempio: BandiAppaltiAgent</h2>
+
+<pre>@Agent(
+    description = "Analisi di bandi di gara, contratti e documentazione appalti ANAC",
+    model = "ollama:qwen3-next:80b-a3b-instruct-q4_K_M"
+)
+public class BandiAppaltiAgent {
+
+    private final SyncMcpToolCallbackProvider mcpTools;
+
+    @Action(
+        description = "Analizza la documentazione relativa a un appalto",
+        pre  = { "world.detectedDomain == 'bandi'" },
+        post = { "world.domainAnalysis != null" }
+    )
+    public TransparenzaWorld analizzaAppalto(TransparenzaWorld world) {
+        String analysis = chatClient.prompt()
+            .system(SYSTEM_PROMPT_BANDI)  // prompt ottimizzato per appalti
+            .user(world.getUserQuery())
+            .tools(mcpTools.getToolCallbacks())
+            .call().content();
+        world.setDomainAnalysis(analysis);
+        return world;
+    }
+
+    private static final String SYSTEM_PROMPT_BANDI =
+        "Sei un esperto di appalti pubblici e del Codice dei Contratti (D.Lgs 36/2023). " +
+        "Analizza la documentazione fornita e rispondi con precisione giuridica. " +
+        "Cita sempre il riferimento normativo pertinente.";
+}</pre>
+
+<h2>Integrazione nel controller (lato client invariato)</h2>
+
+<pre>@PostMapping("/stream")
+public SseEmitter streamChat(@RequestBody ChatRequest request,
+                              @AuthenticationPrincipal Jwt jwt) {
+    SseEmitter emitter = new SseEmitter(sseEmitterProperties.getTimeout());
+
+    TransparenzaWorld world = TransparenzaWorld.builder()
+        .userQuery(request.getQuery())
+        .conversationHistory(request.getHistory())
+        .correlationId(UUID.randomUUID().toString())
+        .build();
+
+    // L'AgentPlatform di Embabel gestisce il ciclo di pianificazione
+    // e invocazione degli agenti in modo asincrono
+    agentPlatform.runAgentAsync(OrchestratorAgent.class, world)
+        .subscribe(
+            event  -> emitter.send(toSseEvent(event)),
+            error  -> emitter.completeWithError(error),
+            ()     -> emitter.complete()
+        );
+
+    return emitter;
+}</pre>
+
+<!-- 6. MODELLI -->
+<h1 id="modelli">6. Strategia dei modelli Open Weight</h1>
+
+<p>Tutti i modelli devono essere eseguibili localmente via Ollama, senza dipendenza da API cloud. La selezione privilegia la disponibilità nel registry Ollama e la compatibilità con Ollama's tool-calling API.</p>
+
+<table>
+  <thead>
+    <tr><th>Agente</th><th>Modello proposto</th><th>Parametri</th><th>Motivazione</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>OrchestratorAgent<br>DatiTrasparenzaAgent</td>
+      <td><code>qwen2.5:14b</code></td>
+      <td>14B</td>
+      <td>Rapido, ottimo tool calling, basso consumo GPU per task di routing</td>
+    </tr>
+    <tr>
+      <td>BandiAppaltiAgent<br>NormativaAgent</td>
+      <td><code>qwen3-next:80b</code> (attuale)</td>
+      <td>80B (MoE)</td>
+      <td>Massima qualità per ragionamento complesso su testi normativi</td>
+    </tr>
+    <tr>
+      <td>MultimedialeAgent (immagini)</td>
+      <td><code>minicpm-v:8b</code></td>
+      <td>8B</td>
+      <td>Modello vision leggero, buon bilanciamento qualità/velocità</td>
+    </tr>
+    <tr>
+      <td>MultimedialeAgent (audio)</td>
+      <td>Whisper (attuale)</td>
+      <td>—</td>
+      <td>Già integrato, eccellente per italiano, nessun cambio necessario</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-success">
+  <strong>Risparmio computazionale atteso</strong>
+  Oggi il 100% delle richieste usa qwen3-next:80b. Con la multi-agent architecture, le richieste di routing (OrchestratorAgent) e tool calling semplice (DatiTrasparenzaAgent) userebbero qwen2.5:14b, liberando capacità GPU per i task che ne hanno davvero bisogno.
+</div>
+
+<!-- 7. MIGRAZIONE -->
+<h1 id="migrazione">7. Piano di migrazione</h1>
+
+<p>La migrazione è progettata per essere <strong>incrementale e non distruttiva</strong>: ogni fase è deployabile indipendentemente senza impatto sui client.</p>
+
+<div class="phases">
+  <div class="phase">
+    <div class="phase-badge">1</div>
+    <div class="phase-content">
+      <div class="phase-title">Infrastruttura base — nessun impatto funzionale</div>
+      <div class="phase-desc">
+        Aggiunta dipendenza Embabel al <code>pom.xml</code>. Creazione di <code>TransparenzaWorld</code> e <code>AgentConfig</code>. Il controller e il comportamento rimangono identici. Obiettivo: validare la compatibilità di Embabel con Spring Boot 4.x e Spring AI 2.x.
+      </div>
+    </div>
+  </div>
+  <div class="phase">
+    <div class="phase-badge">2</div>
+    <div class="phase-content">
+      <div class="phase-title">MultimedialeAgent — caso più isolato</div>
+      <div class="phase-desc">
+        La logica di pre-processing audio (Whisper) e analisi immagini è già separata nel controller. È il candidato ideale per la prima migrazione: basso rischio, chiara separazione di responsabilità, possibilità di testare il pattern Embabel in produzione.
+      </div>
+    </div>
+  </div>
+  <div class="phase">
+    <div class="phase-badge">3</div>
+    <div class="phase-content">
+      <div class="phase-title">DatiTrasparenzaAgent — isolamento tool MCP</div>
+      <div class="phase-desc">
+        Estrazione della logica di invocazione tool MCP in un agente dedicato. Semplifica significativamente il <code>ChatStreamController</code> e rende esplicita la separazione tra "recupero dati" e "ragionamento". Il <code>ToolResultStore</code> esistente può essere sostituito dal World di Embabel.
+      </div>
+    </div>
+  </div>
+  <div class="phase">
+    <div class="phase-badge">4</div>
+    <div class="phase-content">
+      <div class="phase-title">Agenti di dominio + OrchestratorAgent</div>
+      <div class="phase-desc">
+        Introduzione di <code>BandiAppaltiAgent</code> e <code>NormativaAgent</code> con prompt specializzati. Infine l'<code>OrchestratorAgent</code> come punto di ingresso unico che sostituisce la logica di routing nel controller. L'endpoint REST rimane invariato.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 8. RISCHI -->
+<h1 id="rischi">8. Rischi e mitigazioni</h1>
+
+<table>
+  <thead>
+    <tr><th>Rischio</th><th>Probabilità</th><th>Impatto</th><th>Mitigazione</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>API Embabel instabile (v0.x)</td>
+      <td>Media</td>
+      <td>Alto</td>
+      <td>Incapsulare Embabel in un layer interno; esporre solo interfacce proprie. Monitorare le release note prima di ogni aggiornamento.</td>
+    </tr>
+    <tr>
+      <td>Latenza orchestratore → sotto-agenti</td>
+      <td>Media</td>
+      <td>Medio</td>
+      <td>Usare modello leggero (qwen2.5:14b) per il routing. Limitare il prompt di classificazione a poche centinaia di token.</td>
+    </tr>
+    <tr>
+      <td>Streaming SSE con agenti asincroni</td>
+      <td>Media</td>
+      <td>Alto</td>
+      <td>Verificare il supporto Flux/reactive di Embabel nella versione target. Se necessario, implementare un adattatore SSE custom.</td>
+    </tr>
+    <tr>
+      <td>Context window del World troppo grande</td>
+      <td>Bassa</td>
+      <td>Medio</td>
+      <td>Passare nel World solo i dati necessari per ogni agente; evitare di serializzare interi documenti nel contesto condiviso.</td>
+    </tr>
+    <tr>
+      <td>Compatibilità Spring Boot 4.x + Embabel</td>
+      <td>Bassa</td>
+      <td>Alto</td>
+      <td>Verificare nella Fase 1 (infrastruttura) prima di procedere. Embabel è progettato per Spring AI 2.x che è la versione usata dal progetto.</td>
+    </tr>
+    <tr>
+      <td>Disponibilità GPU per più modelli in parallelo</td>
+      <td>Media</td>
+      <td>Alto</td>
+      <td>Configurare Ollama con keep_alive opportuno; valutare esecuzione sequenziale degli agenti in prima fase.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- 9. CONCLUSIONI -->
+<h1 id="conclusioni">9. Conclusioni e prossimi passi</h1>
+
+<h2>Sintesi della proposta</h2>
+
+<p>L'introduzione di un'architettura multi-agent basata su Embabel è <strong>vantaggiosa e coerente</strong> con la direzione del progetto per le seguenti ragioni:</p>
+
+<ul>
+  <li>Il dominio applicativo (trasparenza ANAC, appalti, normativa) è <strong>naturalmente multi-dominio</strong> e beneficia di agenti specializzati con prompt ottimizzati</li>
+  <li>L'uso di modelli diversi per agenti diversi permette di <strong>ottimizzare latenza e consumo GPU</strong> senza compromettere la qualità dei task complessi</li>
+  <li>Embabel è <strong>Spring-native</strong> e non richiede un cambio di paradigma radicale rispetto all'architettura esistente</li>
+  <li>La <strong>migrazione incrementale</strong> per fasi garantisce la continuità del servizio e permette di validare ogni fase in isolamento</li>
+  <li>Il design <strong>trasparente verso i client</strong> significa che nessun consumer del servizio deve essere aggiornato</li>
+</ul>
+
+<div class="callout callout-warning">
+  <strong>Attenzione</strong>
+  Embabel è in versione 0.x (early development). Prima di adottarlo in produzione è fondamentale verificare la stabilità dell'API nella Fase 1 e valutare la community e la roadmap del progetto. In alternativa, è possibile implementare un orchestratore custom leggero su Spring AI senza Embabel, sacrificando il planning dichiarativo ma guadagnando in stabilità.
+</div>
+
+<h2>Prossimi passi consigliati</h2>
+
+<ol>
+  <li><strong>Proof of Concept (Fase 1):</strong> aggiungere Embabel al progetto e verificare la compatibilità con Spring Boot 4.x e Spring AI 2.0.0-M4 in un branch dedicato</li>
+  <li><strong>Spike MultimedialeAgent (Fase 2):</strong> implementare e testare il primo agente in isolamento, misurando latenza e qualità rispetto all'approccio attuale</li>
+  <li><strong>Decisione go/no-go su Embabel:</strong> dopo il PoC, valutare se proseguire con Embabel o implementare un orchestratore custom</li>
+  <li><strong>Identificazione dei domini:</strong> raffinare la tassonomia degli agenti con gli stakeholder di dominio (esperti ANAC, utenti finali)</li>
+  <li><strong>Benchmark modelli:</strong> confrontare qwen2.5:14b vs qwen3-next:80b su task di routing per validare l'assunzione di risparmio computazionale</li>
+</ol>
+
+<div class="footer">
+  Documento generato nell'ambito del progetto TransparenzAI — CNR Istituto di Informatica e Telematica<br>
+  AI Integration Service &nbsp;·&nbsp; Aprile 2025 &nbsp;·&nbsp; Bozza di discussione interna
+</div>
+
+</body>
+</html>
