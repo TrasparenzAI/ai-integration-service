@@ -19,17 +19,14 @@ package it.cnr.anac.transparency.ai_integration_service.config;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.modelcontextprotocol.client.McpClient;
-import io.modelcontextprotocol.json.jackson3.JacksonMcpJsonMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.mcp.client.common.autoconfigure.properties.McpStreamableHttpClientProperties;
-import org.springframework.ai.mcp.client.common.autoconfigure.properties.McpStreamableHttpClientProperties.ConnectionParameters;
-import org.springframework.ai.mcp.client.webflux.transport.WebClientStreamableHttpTransport;
-import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.ai.mcp.client.common.autoconfigure.NamedClientMcpTransport;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.core.ResolvableType;
 import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.WebClient;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -42,31 +39,42 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Verifica che verso le connessioni MCP pubbliche non venga inviato l'header
- * {@code Authorization}, mentre le altre connessioni mantengono il filtro OAuth2.
+ * Verifica l'attivazione dell'MCP server di DoveVannoINostriSoldi tramite
+ * {@code ai.mcp.dvns.enabled} e che verso di esso non venga inviato l'header
+ * {@code Authorization}, anche in presenza del {@link WebClient.Builder} con filtro
+ * OAuth2 definito in {@code SecurityConfig}.
  * <p>
- * Il transport viene costruito come in {@code StreamableHttpWebFluxTransportAutoConfiguration}
- * (clone del builder "globale" + customizer) e usato da un vero client MCP contro un
- * server HTTP locale che registra gli header ricevuti.
+ * Il transport viene usato da un vero client MCP contro un server HTTP locale che
+ * registra gli header ricevuti.
  */
-class PublicMcpConnectionsCustomizerTest {
+class DvnsMcpConfigTest {
 
     private static final String BEARER = "Bearer token-che-non-deve-uscire";
 
     private static final Pattern REQUEST_ID = Pattern.compile("\"id\"\\s*:\\s*(\"[^\"]*\"|\\d+)");
 
+    private static final ResolvableType TRANSPORTS_TYPE =
+            ResolvableType.forClassWithGenerics(List.class, NamedClientMcpTransport.class);
+
     private final List<String> authorizationHeaders = new CopyOnWriteArrayList<>();
 
     private HttpServer server;
 
-    private String serverUrl;
+    private ApplicationContextRunner contextRunner;
 
     @BeforeEach
     void startServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
         server.createContext("/api/mcp", this::handle);
         server.start();
-        serverUrl = "http://localhost:" + server.getAddress().getPort();
+        contextRunner = new ApplicationContextRunner()
+                .withUserConfiguration(DvnsMcpConfig.class)
+                // Equivalente del WebClient.Builder definito in SecurityConfig
+                .withBean(WebClient.Builder.class, () -> WebClient.builder().filter((request, next) ->
+                        next.exchange(ClientRequest.from(request).header("Authorization", BEARER).build())))
+                .withPropertyValues(
+                        "ai.mcp.dvns.url=http://localhost:" + server.getAddress().getPort(),
+                        "ai.mcp.dvns.endpoint=/api/mcp");
     }
 
     @AfterEach
@@ -75,42 +83,26 @@ class PublicMcpConnectionsCustomizerTest {
     }
 
     @Test
-    void publicConnectionDoesNotSendAuthorizationHeader() {
-        initializeClient("dvns", List.of("dvns"));
-
-        assertThat(authorizationHeaders).isNotEmpty().allMatch(String::isEmpty);
+    void disabledByDefault() {
+        contextRunner.run(context -> assertThat(context.getBeanNamesForType(TRANSPORTS_TYPE)).isEmpty());
     }
 
     @Test
-    void otherConnectionsKeepOAuth2Filter() {
-        initializeClient("trasparenzai", List.of("dvns"));
+    void enabledServerReceivesNoAuthorizationHeader() {
+        contextRunner.withPropertyValues("ai.mcp.dvns.enabled=true").run(context -> {
+            @SuppressWarnings("unchecked")
+            var transports = (List<NamedClientMcpTransport>) context.getBeanProvider(TRANSPORTS_TYPE).getObject();
+            assertThat(transports).singleElement()
+                    .extracting(NamedClientMcpTransport::name).isEqualTo(DvnsMcpConfig.CONNECTION_NAME);
 
-        assertThat(authorizationHeaders).isNotEmpty().allMatch(BEARER::equals);
-    }
+            try (var client = McpClient.sync(transports.getFirst().transport())
+                    .requestTimeout(Duration.ofSeconds(5))
+                    .build()) {
+                client.initialize();
+            }
 
-    private void initializeClient(String connectionName, List<String> publicConnections) {
-        var properties = new McpStreamableHttpClientProperties();
-        properties.getConnections().put(connectionName, new ConnectionParameters(serverUrl, "/api/mcp"));
-        var beanFactory = new DefaultListableBeanFactory();
-        beanFactory.registerSingleton("streamableHttpProperties", properties);
-        var customizer = new PublicMcpConnectionsCustomizer(publicConnections,
-                beanFactory.getBeanProvider(McpStreamableHttpClientProperties.class));
-
-        // Equivalente del WebClient.Builder definito in SecurityConfig
-        var oauth2WebClientBuilder = WebClient.builder().filter((request, next) ->
-                next.exchange(ClientRequest.from(request).header("Authorization", BEARER).build()));
-
-        var transportBuilder = WebClientStreamableHttpTransport
-                .builder(oauth2WebClientBuilder.clone().baseUrl(serverUrl))
-                .endpoint("/api/mcp")
-                .jsonMapper(new JacksonMcpJsonMapper(new JsonMapper()));
-        customizer.customize(connectionName, transportBuilder);
-
-        try (var client = McpClient.sync(transportBuilder.build())
-                .requestTimeout(Duration.ofSeconds(5))
-                .build()) {
-            client.initialize();
-        }
+            assertThat(authorizationHeaders).isNotEmpty().allMatch(String::isEmpty);
+        });
     }
 
     private void handle(HttpExchange exchange) throws IOException {

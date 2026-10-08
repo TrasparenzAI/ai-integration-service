@@ -92,19 +92,17 @@ spring.security.oauth2.client.registration.authserver-client-credentials.client-
 
 Suggerimento: puoi definire quanti server vuoi con ID diversi (`tools`, `public_site_mcp_server`, `results_mcp_server`, …).
 
-**MCP server pubblici esterni.** Per impostazione predefinita a ogni MCP server vengono inviati
-il JWT dell'utente (durante le tool call) o un token `client_credentials` (all'avvio).
-Per i server di terze parti che non richiedono autenticazione, elenca gli ID delle connessioni
-in `ai.mcp.public-connections`: a queste connessioni non viene inviato nessun token.
-Esempio con l'MCP server di [DoveVannoINostriSoldi](https://www.dovevannoinostrisoldi.com)
-(dati di finanza pubblica, read-only):
+**MCP server di DoveVannoINostriSoldi.** È disponibile, disattivato di default, l'MCP server
+pubblico di [DoveVannoINostriSoldi](https://www.dovevannoinostrisoldi.com) (dati di finanza
+pubblica, read-only). Per attivarlo, oltre a `spring.ai.mcp.client.enabled=true`:
 
 ```
-spring.ai.mcp.client.streamable-http.connections.dvns.url=https://www.dovevannoinostrisoldi.com
-# il default di Spring AI e' /mcp
-spring.ai.mcp.client.streamable-http.connections.dvns.endpoint=/api/mcp
-ai.mcp.public-connections=dvns
+ai.mcp.dvns.enabled=true
 ```
+
+URL ed endpoint hanno già un default in `application.properties` (`ai.mcp.dvns.url`,
+`ai.mcp.dvns.endpoint`). A differenza degli altri MCP server, a questo non viene inviato nessun
+token OAuth2 (né il JWT dell'utente né quello `client_credentials`).
 
 4) Configura Ollama in locale (già presente):
 
