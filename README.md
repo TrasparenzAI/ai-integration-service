@@ -103,6 +103,8 @@ ai.mcp.dvns.enabled=true
 URL ed endpoint hanno già un default in `application.properties` (`ai.mcp.dvns.url`,
 `ai.mcp.dvns.endpoint`). A differenza degli altri MCP server, a questo non viene inviato nessun
 token OAuth2 (né il JWT dell'utente né quello `client_credentials`).
+Quando il server è attivo, al system prompt viene aggiunta la regola sull'uso dei suoi tool
+(`ai.mcp.dvns.system-prompt`); quando è disattivato la regola non viene inviata al modello.
 
 4) Configura Ollama in locale (già presente):
 
