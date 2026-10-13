@@ -34,6 +34,15 @@ public class ChatConfig {
     @Value("${ai.systemPrompt}")
     String SYSTEM_PROMPT;
 
+    @Value("${spring.ai.mcp.client.enabled:false}")
+    boolean mcpClientEnabled;
+
+    @Value("${ai.mcp.dvns.enabled:false}")
+    boolean dvnsEnabled;
+
+    @Value("${ai.mcp.dvns.system-prompt:}")
+    String dvnsSystemPrompt;
+
     @Bean
     @RefreshScope
     public SyncMcpToolCallbackProvider mcpToolCallbackProvider(List<McpSyncClient> mcpClients) {
@@ -47,7 +56,19 @@ public class ChatConfig {
     ChatClient chatClient(ChatClient.Builder chatClientBuilder) {
         // Niente defaultToolCallbacks qui — li passiamo per request
         return chatClientBuilder
-                .defaultSystem(SYSTEM_PROMPT)
+                .defaultSystem(systemPrompt(SYSTEM_PROMPT, mcpClientEnabled && dvnsEnabled, dvnsSystemPrompt))
                 .build();
+    }
+
+    /**
+     * Aggiunge al system prompt la regola sull'uso dei tool di DoveVannoINostriSoldi
+     * solo quando il relativo MCP server e' attivo: altrimenti il modello riceverebbe
+     * istruzioni su tool che non esistono.
+     */
+    static String systemPrompt(String basePrompt, boolean dvnsActive, String dvnsPrompt) {
+        if (!dvnsActive || dvnsPrompt == null || dvnsPrompt.isBlank()) {
+            return basePrompt;
+        }
+        return basePrompt + "\n" + dvnsPrompt;
     }
 }
