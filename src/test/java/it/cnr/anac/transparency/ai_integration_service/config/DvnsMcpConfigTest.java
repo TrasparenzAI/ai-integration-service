@@ -49,7 +49,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>
  * Il transport viene usato da un vero client MCP contro un server HTTP locale che
  * registra gli header ricevuti. Viene verificato anche che le risposte piu' grandi
- * del limite di default dei codec (256KB) vengano lette.
+ * del limite di default dei codec (256KB) vengano lette: il payload grande sta nella
+ * risposta a {@code tools/list} e non in quella a {@code initialize}, che il client
+ * MCP scrive per intero nel log (una riga da centinaia di KB rallenta di minuti
+ * l'elaborazione dei log della CI GitHub).
  */
 class DvnsMcpConfigTest {
 
@@ -64,8 +67,6 @@ class DvnsMcpConfigTest {
     private static final int LARGE_RESPONSE_SIZE = 512 * 1024;
 
     private final List<String> authorizationHeaders = new CopyOnWriteArrayList<>();
-
-    private int instructionsSize = 0;
 
     private HttpServer server;
 
@@ -116,25 +117,26 @@ class DvnsMcpConfigTest {
 
     @Test
     void readsResponsesLargerThanDefaultCodecLimit() {
-        instructionsSize = LARGE_RESPONSE_SIZE;
         contextRunner.withPropertyValues("ai.mcp.dvns.enabled=true").run(context -> {
             try (var client = McpClient.sync(transport(context))
                     .requestTimeout(Duration.ofSeconds(5))
                     .build()) {
-                assertThat(client.initialize().instructions()).hasSize(LARGE_RESPONSE_SIZE);
+                client.initialize();
+                assertThat(client.listTools().tools()).singleElement()
+                        .satisfies(tool -> assertThat(tool.description()).hasSize(LARGE_RESPONSE_SIZE));
             }
         });
     }
 
     @Test
     void responsesOverMaxInMemorySizeAreNotRead() {
-        instructionsSize = LARGE_RESPONSE_SIZE;
         contextRunner.withPropertyValues("ai.mcp.dvns.enabled=true", "ai.mcp.dvns.max-in-memory-size=256KB")
                 .run(context -> {
                     try (var client = McpClient.sync(transport(context))
                             .requestTimeout(Duration.ofSeconds(2))
                             .build()) {
-                        assertThatThrownBy(client::initialize).isInstanceOf(RuntimeException.class);
+                        client.initialize();
+                        assertThatThrownBy(client::listTools).isInstanceOf(RuntimeException.class);
                     }
                 });
     }
@@ -154,15 +156,20 @@ class DvnsMcpConfigTest {
             return;
         }
         var id = REQUEST_ID.matcher(body);
-        if (!body.contains("\"initialize\"") || !id.find()) {
+        if (!id.find()) {
             // notifiche (es. notifications/initialized)
             exchange.sendResponseHeaders(202, -1);
             return;
         }
+        String result = body.contains("\"tools/list\"")
+                ? """
+                {"tools":[{"name":"large","description":"%s","inputSchema":{"type":"object"}}]}"""
+                        .formatted("x".repeat(LARGE_RESPONSE_SIZE))
+                : """
+                {"protocolVersion":"2025-06-18","capabilities":{"tools":{}},\
+                "serverInfo":{"name":"test","version":"0.0.1"}}""";
         byte[] response = """
-                {"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"2025-06-18","capabilities":{},\
-                "serverInfo":{"name":"test","version":"0.0.1"},"instructions":"%s"}}""".formatted(
-                        id.group(1), "x".repeat(instructionsSize))
+                {"jsonrpc":"2.0","id":%s,"result":%s}""".formatted(id.group(1), result)
                 .getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json");
         exchange.sendResponseHeaders(200, response.length);
