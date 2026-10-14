@@ -19,11 +19,13 @@ package it.cnr.anac.transparency.ai_integration_service.config;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.modelcontextprotocol.client.McpClient;
+import io.modelcontextprotocol.spec.McpClientTransport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.mcp.client.common.autoconfigure.NamedClientMcpTransport;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.ApplicationContext;
 import org.springframework.core.ResolvableType;
 import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -37,6 +39,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Verifica l'attivazione dell'MCP server di DoveVannoINostriSoldi tramite
@@ -45,7 +48,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * OAuth2 definito in {@code SecurityConfig}.
  * <p>
  * Il transport viene usato da un vero client MCP contro un server HTTP locale che
- * registra gli header ricevuti.
+ * registra gli header ricevuti. Viene verificato anche che le risposte piu' grandi
+ * del limite di default dei codec (256KB) vengano lette.
  */
 class DvnsMcpConfigTest {
 
@@ -56,7 +60,12 @@ class DvnsMcpConfigTest {
     private static final ResolvableType TRANSPORTS_TYPE =
             ResolvableType.forClassWithGenerics(List.class, NamedClientMcpTransport.class);
 
+    /** Risposta piu' grande del limite di default dei codec (256KB). */
+    private static final int LARGE_RESPONSE_SIZE = 512 * 1024;
+
     private final List<String> authorizationHeaders = new CopyOnWriteArrayList<>();
+
+    private int instructionsSize = 0;
 
     private HttpServer server;
 
@@ -105,6 +114,37 @@ class DvnsMcpConfigTest {
         });
     }
 
+    @Test
+    void readsResponsesLargerThanDefaultCodecLimit() {
+        instructionsSize = LARGE_RESPONSE_SIZE;
+        contextRunner.withPropertyValues("ai.mcp.dvns.enabled=true").run(context -> {
+            try (var client = McpClient.sync(transport(context))
+                    .requestTimeout(Duration.ofSeconds(5))
+                    .build()) {
+                assertThat(client.initialize().instructions()).hasSize(LARGE_RESPONSE_SIZE);
+            }
+        });
+    }
+
+    @Test
+    void responsesOverMaxInMemorySizeAreNotRead() {
+        instructionsSize = LARGE_RESPONSE_SIZE;
+        contextRunner.withPropertyValues("ai.mcp.dvns.enabled=true", "ai.mcp.dvns.max-in-memory-size=256KB")
+                .run(context -> {
+                    try (var client = McpClient.sync(transport(context))
+                            .requestTimeout(Duration.ofSeconds(2))
+                            .build()) {
+                        assertThatThrownBy(client::initialize).isInstanceOf(RuntimeException.class);
+                    }
+                });
+    }
+
+    @SuppressWarnings("unchecked")
+    private static McpClientTransport transport(ApplicationContext context) {
+        return ((List<NamedClientMcpTransport>) context.getBeanProvider(TRANSPORTS_TYPE).getObject())
+                .getFirst().transport();
+    }
+
     private void handle(HttpExchange exchange) throws IOException {
         authorizationHeaders.add(
                 exchange.getRequestHeaders().getOrDefault("Authorization", List.of("")).getFirst());
@@ -121,7 +161,8 @@ class DvnsMcpConfigTest {
         }
         byte[] response = """
                 {"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"2025-06-18","capabilities":{},\
-                "serverInfo":{"name":"test","version":"0.0.1"}}}""".formatted(id.group(1))
+                "serverInfo":{"name":"test","version":"0.0.1"},"instructions":"%s"}}""".formatted(
+                        id.group(1), "x".repeat(instructionsSize))
                 .getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json");
         exchange.sendResponseHeaders(200, response.length);

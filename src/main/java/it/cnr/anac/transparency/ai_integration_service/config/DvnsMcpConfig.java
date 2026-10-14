@@ -25,6 +25,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.unit.DataSize;
 import org.springframework.web.reactive.function.client.WebClient;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -40,6 +41,11 @@ import java.util.List;
  * {@link WebClient} dedicato e non il {@link WebClient.Builder} di {@code SecurityConfig}:
  * in questo modo al servizio esterno non viene inviato nessun token OAuth2
  * (ne' il JWT dell'utente ne' quello {@code client_credentials}).
+ * <p>
+ * Alcuni tool restituiscono risposte piu' grandi del limite di default dei codec
+ * (256KB): oltre il limite la risposta viene scartata e la chiamata al tool resta
+ * in attesa fino al request timeout. Il limite e' configurabile con
+ * {@code ai.mcp.dvns.max-in-memory-size}.
  */
 @Slf4j
 @Configuration
@@ -52,9 +58,14 @@ public class DvnsMcpConfig {
     List<NamedClientMcpTransport> dvnsMcpTransport(
             @Value("${ai.mcp.dvns.url}") String url,
             @Value("${ai.mcp.dvns.endpoint}") String endpoint,
+            @Value("${ai.mcp.dvns.max-in-memory-size:4MB}") String maxInMemorySize,
             ObjectProvider<JsonMapper> jsonMapperProvider) {
         log.info("MCP server DoveVannoINostriSoldi abilitato: {}{}", url, endpoint);
-        var transport = WebClientStreamableHttpTransport.builder(WebClient.builder().baseUrl(url))
+        var webClient = WebClient.builder()
+                .baseUrl(url)
+                .codecs(configurer -> configurer.defaultCodecs()
+                        .maxInMemorySize((int) DataSize.parse(maxInMemorySize).toBytes()));
+        var transport = WebClientStreamableHttpTransport.builder(webClient)
                 .endpoint(endpoint)
                 .jsonMapper(new JacksonMcpJsonMapper(jsonMapperProvider.getIfAvailable(JsonMapper::new)))
                 .build();
