@@ -20,7 +20,7 @@ jobs:
           distribution: 'temurin'
           cache: maven
       - name: Run Tests with Maven
-        run: mvn --batch-mode --update-snapshots clean test
+        run: ./mvnw --batch-mode --update-snapshots clean test
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v7

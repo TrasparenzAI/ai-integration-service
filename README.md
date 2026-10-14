@@ -105,6 +105,9 @@ URL ed endpoint hanno già un default in `application.properties` (`ai.mcp.dvns.
 token OAuth2 (né il JWT dell'utente né quello `client_credentials`).
 Quando il server è attivo, al system prompt viene aggiunta la regola sull'uso dei suoi tool
 (`ai.mcp.dvns.system-prompt`); quando è disattivato la regola non viene inviata al modello.
+Alcuni tool restituiscono risposte più grandi del limite di default dei codec Spring (256KB):
+la dimensione massima di una risposta è configurabile con `ai.mcp.dvns.max-in-memory-size`
+(default `4MB` in `application.properties`).
 
 4) Configura Ollama in locale (già presente):
 
