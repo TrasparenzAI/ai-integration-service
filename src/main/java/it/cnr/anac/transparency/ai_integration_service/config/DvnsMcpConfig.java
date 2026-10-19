@@ -23,6 +23,7 @@ import org.springframework.ai.mcp.client.webflux.transport.WebClientStreamableHt
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.util.unit.DataSize;
@@ -50,6 +51,7 @@ import java.util.List;
 @Slf4j
 @Configuration
 @ConditionalOnBooleanProperty("ai.mcp.dvns.enabled")
+@RefreshScope
 public class DvnsMcpConfig {
 
     public static final String CONNECTION_NAME = "dvns";
