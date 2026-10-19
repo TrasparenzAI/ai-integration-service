@@ -17,6 +17,7 @@
 package it.cnr.anac.transparency.ai_integration_service.config;
 
 import io.modelcontextprotocol.json.jackson3.JacksonMcpJsonMapper;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.mcp.client.common.autoconfigure.NamedClientMcpTransport;
 import org.springframework.ai.mcp.client.webflux.transport.WebClientStreamableHttpTransport;
@@ -24,8 +25,11 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
+import org.springframework.cloud.context.scope.refresh.RefreshScopeRefreshedEvent;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.event.EventListener;
 import org.springframework.util.unit.DataSize;
 import org.springframework.web.reactive.function.client.WebClient;
 import tools.jackson.databind.json.JsonMapper;
@@ -50,9 +54,12 @@ import java.util.List;
  */
 @Slf4j
 @Configuration
+@RequiredArgsConstructor
 public class DvnsMcpConfig {
 
     public static final String CONNECTION_NAME = "dvns";
+
+    private final ApplicationContext applicationContext;
 
     @Bean
     @RefreshScope
@@ -78,4 +85,10 @@ public class DvnsMcpConfig {
         return List.of(new NamedClientMcpTransport(CONNECTION_NAME, transport));
     }
 
+    @EventListener(RefreshScopeRefreshedEvent.class)
+    void onRefresh() {
+        // il bean è lazy: va invocato un metodo del proxy per ricrearlo
+        int size = applicationContext.getBean("dvnsMcpTransport", List.class).size();
+        log.info("Refresh completato: transport DVNS presenti = {}", size);
+    }
 }
