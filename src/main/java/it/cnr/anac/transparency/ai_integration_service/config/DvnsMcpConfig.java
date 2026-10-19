@@ -57,6 +57,7 @@ public class DvnsMcpConfig {
     public static final String CONNECTION_NAME = "dvns";
 
     @Bean
+    @RefreshScope
     List<NamedClientMcpTransport> dvnsMcpTransport(
             @Value("${ai.mcp.dvns.url}") String url,
             @Value("${ai.mcp.dvns.endpoint}") String endpoint,
