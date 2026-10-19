@@ -24,9 +24,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.mcp.client.common.autoconfigure.NamedClientMcpTransport;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.util.TestPropertyValues;
+import org.springframework.cloud.autoconfigure.RefreshAutoConfiguration;
+import org.springframework.cloud.context.scope.refresh.RefreshScope;
 import org.springframework.context.ApplicationContext;
-import org.springframework.core.ResolvableType;
 import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -43,9 +46,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Verifica l'attivazione dell'MCP server di DoveVannoINostriSoldi tramite
- * {@code ai.mcp.dvns.enabled} e che verso di esso non venga inviato l'header
- * {@code Authorization}, anche in presenza del {@link WebClient.Builder} con filtro
- * OAuth2 definito in {@code SecurityConfig}.
+ * {@code ai.mcp.dvns.enabled}, la sua rilettura dopo un refresh dello scope
+ * (equivalente di {@code /actuator/refresh}) e che verso di esso non venga inviato
+ * l'header {@code Authorization}, anche in presenza del {@link WebClient.Builder}
+ * con filtro OAuth2 definito in {@code SecurityConfig}.
+ * <p>
+ * Il bean {@code dvnsMcpTransport} e' {@code @RefreshScope}, quindi e' esposto tramite
+ * un proxy che perde il tipo generico {@code List<NamedClientMcpTransport>}: nei test
+ * viene recuperato per nome e non per tipo generico.
  * <p>
  * Il transport viene usato da un vero client MCP contro un server HTTP locale che
  * registra gli header ricevuti. Viene verificato anche che le risposte piu' grandi
@@ -58,10 +66,9 @@ class DvnsMcpConfigTest {
 
     private static final String BEARER = "Bearer token-che-non-deve-uscire";
 
-    private static final Pattern REQUEST_ID = Pattern.compile("\"id\"\\s*:\\s*(\"[^\"]*\"|\\d+)");
+    private static final String BEAN_NAME = "dvnsMcpTransport";
 
-    private static final ResolvableType TRANSPORTS_TYPE =
-            ResolvableType.forClassWithGenerics(List.class, NamedClientMcpTransport.class);
+    private static final Pattern REQUEST_ID = Pattern.compile("\"id\"\\s*:\\s*(\"[^\"]*\"|\\d+)");
 
     /** Risposta piu' grande del limite di default dei codec (256KB). */
     private static final int LARGE_RESPONSE_SIZE = 512 * 1024;
@@ -78,6 +85,7 @@ class DvnsMcpConfigTest {
         server.createContext("/api/mcp", this::handle);
         server.start();
         contextRunner = new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(RefreshAutoConfiguration.class))
                 .withUserConfiguration(DvnsMcpConfig.class)
                 // Equivalente del WebClient.Builder definito in SecurityConfig
                 .withBean(WebClient.Builder.class, () -> WebClient.builder().filter((request, next) ->
@@ -94,14 +102,19 @@ class DvnsMcpConfigTest {
 
     @Test
     void disabledByDefault() {
-        contextRunner.run(context -> assertThat(context.getBeanNamesForType(TRANSPORTS_TYPE)).isEmpty());
+        contextRunner.run(context -> assertThat(transports(context)).isEmpty());
+    }
+
+    @Test
+    void explicitlyDisabledYieldsNoTransports() {
+        contextRunner.withPropertyValues("ai.mcp.dvns.enabled=false")
+                .run(context -> assertThat(transports(context)).isEmpty());
     }
 
     @Test
     void enabledServerReceivesNoAuthorizationHeader() {
         contextRunner.withPropertyValues("ai.mcp.dvns.enabled=true").run(context -> {
-            @SuppressWarnings("unchecked")
-            var transports = (List<NamedClientMcpTransport>) context.getBeanProvider(TRANSPORTS_TYPE).getObject();
+            var transports = transports(context);
             assertThat(transports).singleElement()
                     .extracting(NamedClientMcpTransport::name).isEqualTo(DvnsMcpConfig.CONNECTION_NAME);
 
@@ -112,6 +125,34 @@ class DvnsMcpConfigTest {
             }
 
             assertThat(authorizationHeaders).isNotEmpty().allMatch(String::isEmpty);
+        });
+    }
+
+    @Test
+    void refreshEnablesServerWhenPropertyChangesToTrue() {
+        contextRunner.withPropertyValues("ai.mcp.dvns.enabled=false").run(context -> {
+            assertThat(transports(context)).isEmpty();
+
+            // senza refresh il valore precedente resta in cache
+            TestPropertyValues.of("ai.mcp.dvns.enabled=true").applyTo(context);
+            assertThat(transports(context)).isEmpty();
+
+            context.getBean(RefreshScope.class).refreshAll();
+
+            assertThat(transports(context)).singleElement()
+                    .extracting(NamedClientMcpTransport::name).isEqualTo(DvnsMcpConfig.CONNECTION_NAME);
+        });
+    }
+
+    @Test
+    void refreshDisablesServerWhenPropertyChangesToFalse() {
+        contextRunner.withPropertyValues("ai.mcp.dvns.enabled=true").run(context -> {
+            assertThat(transports(context)).hasSize(1);
+
+            TestPropertyValues.of("ai.mcp.dvns.enabled=false").applyTo(context);
+            context.getBean(RefreshScope.class).refreshAll();
+
+            assertThat(transports(context)).isEmpty();
         });
     }
 
@@ -141,10 +182,14 @@ class DvnsMcpConfigTest {
                 });
     }
 
+    /** Recupero per nome: il proxy dello scope refresh non espone il tipo generico della lista. */
     @SuppressWarnings("unchecked")
+    private static List<NamedClientMcpTransport> transports(ApplicationContext context) {
+        return context.getBean(BEAN_NAME, List.class);
+    }
+
     private static McpClientTransport transport(ApplicationContext context) {
-        return ((List<NamedClientMcpTransport>) context.getBeanProvider(TRANSPORTS_TYPE).getObject())
-                .getFirst().transport();
+        return transports(context).getFirst().transport();
     }
 
     private void handle(HttpExchange exchange) throws IOException {
@@ -164,7 +209,7 @@ class DvnsMcpConfigTest {
         String result = body.contains("\"tools/list\"")
                 ? """
                 {"tools":[{"name":"large","description":"%s","inputSchema":{"type":"object"}}]}"""
-                        .formatted("x".repeat(LARGE_RESPONSE_SIZE))
+                .formatted("x".repeat(LARGE_RESPONSE_SIZE))
                 : """
                 {"protocolVersion":"2025-06-18","capabilities":{"tools":{}},\
                 "serverInfo":{"name":"test","version":"0.0.1"}}""";

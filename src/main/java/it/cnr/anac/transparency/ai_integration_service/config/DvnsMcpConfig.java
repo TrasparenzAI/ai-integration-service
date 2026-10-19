@@ -50,8 +50,6 @@ import java.util.List;
  */
 @Slf4j
 @Configuration
-@ConditionalOnBooleanProperty("ai.mcp.dvns.enabled")
-@RefreshScope
 public class DvnsMcpConfig {
 
     public static final String CONNECTION_NAME = "dvns";
@@ -59,10 +57,15 @@ public class DvnsMcpConfig {
     @Bean
     @RefreshScope
     List<NamedClientMcpTransport> dvnsMcpTransport(
-            @Value("${ai.mcp.dvns.url}") String url,
-            @Value("${ai.mcp.dvns.endpoint}") String endpoint,
+            @Value("${ai.mcp.dvns.enabled:false}") boolean enabled,
+            @Value("${ai.mcp.dvns.url:}") String url,
+            @Value("${ai.mcp.dvns.endpoint:}") String endpoint,
             @Value("${ai.mcp.dvns.max-in-memory-size:4MB}") String maxInMemorySize,
             ObjectProvider<JsonMapper> jsonMapperProvider) {
+
+        if (!enabled) {
+            return List.of();
+        }
         log.info("MCP server DoveVannoINostriSoldi abilitato: {}{}", url, endpoint);
         var webClient = WebClient.builder()
                 .baseUrl(url)
